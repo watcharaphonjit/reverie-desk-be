@@ -1,0 +1,1151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum WarehouseType {
+  CENTRAL_HUB
+  BRANCH
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum RoleCode {
+  ADMIN
+  TELESALES
+  CS
+  DOCTOR
+  EMPLOYEE
+  BRANCH_MANAGER
+  SUPER_BRANCH_MANAGER
+  CENTRAL_STOCK_HUB
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_PAID
+  PAID
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  QR
+  E_WALLET
+}
+
+enum PaymentType {
+  DEPOSIT
+  FULL
+  INSTALLMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  VOIDED
+  REFUNDED
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum ServiceEventStatus {
+  IN_PROGRESS
+  COMPLETED
+  VOIDED
+}
+
+enum CommissionStatus {
+  PENDING
+  ELIGIBLE
+  LOCKED
+  PAID
+  REVOKED
+}
+
+enum CommissionType {
+  LEAD_REWARD
+  SALES_COMMISSION
+}
+
+enum CommissionValueType {
+  FIXED
+  PERCENTAGE
+}
+
+enum RefundType {
+  FULL_REFUND
+  PARTIAL_REFUND
+  CANCELLATION
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum WalletType {
+  DEPOSIT
+  VOUCHER
+  REWARD
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+  HOLD
+  RELEASE
+  EXPIRE
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum WalletReferenceType {
+  SALES_ORDER
+  PAYMENT
+  REFUND
+  BRANCH_STOCK_SALE
+  MANUAL
+}
+
+enum StockItemType {
+  RETAIL
+  CLINICAL
+}
+
+enum ConsumptionStrategy {
+  WHOLE_ONLY
+  PARTIAL_ALLOWED
+  PARTIAL_REQUIRED
+}
+
+enum StockLotStatus {
+  ACTIVE
+  QUARANTINED
+  EXHAUSTED
+  EXPIRED
+  DISCARDED
+}
+
+enum StockMovementType {
+  PURCHASE_IN
+  TRANSFER_OUT
+  TRANSFER_IN
+  CLINICAL_USAGE
+  RETAIL_SALE
+  ADJUSTMENT
+  RETURN
+  EXPIRE
+  DISCARD
+}
+
+enum StockTransferStatus {
+  DRAFT
+  REQUESTED
+  APPROVED
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum OpenedContainerStatus {
+  ACTIVE
+  EMPTY
+  EXPIRED
+  DISCARDED
+}
+
+enum SalesChannelCode {
+  WALK_IN
+  DELIVERY
+  STAFF
+  EXECUTIVE
+  VIP
+  PRESENTER
+}
+
+enum BranchStockSaleStatus {
+  DRAFT
+  PAID
+  COMPLETED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ASSIGN
+  TRANSFER
+  COMPLETE
+  APPROVE
+  REJECT
+  PAY
+  REFUND
+  REVOKE
+  LOGIN
+  LOGOUT
+}
+
+model Branch {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  name      String
+  status    BranchStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  users              User[]                 @relation("UserBranch")
+  userRoles          UserRole[]             @relation("UserRoleBranch")
+  customersCurrent   Customer[]             @relation("CustomerCurrentBranch")
+  leads              Lead[]                 @relation("LeadBranch")
+  salesOrders        SalesOrder[]           @relation("SalesOrderBranch")
+  appointments       Appointment[]          @relation("AppointmentBranch")
+  serviceEvents      CustomerServiceEvent[] @relation("ServiceEventBranch")
+  warehouses         Warehouse[]            @relation("WarehouseBranch")
+  stockTransfersOut  StockTransfer[]        @relation("StockTransferFromBranch")
+  stockTransfersIn   StockTransfer[]        @relation("StockTransferToBranch")
+  branchStockSales   BranchStockSale[]      @relation("BranchStockSaleBranch")
+  walletTransactions WalletTransaction[]    @relation("WalletTxnBranch")
+  commissionRules    CommissionRule[]       @relation("CommissionRuleBranch")
+  auditLogs          AuditLog[]             @relation("AuditLogBranch")
+  purchaseReceipts   PurchaseReceipt[]      @relation("PurchaseReceiptBranch")
+
+  @@map("branches")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  phone        String?    @unique
+  fullName     String
+  passwordHash String
+  branchId     String?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  branch                         Branch?                 @relation("UserBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  userRoles                      UserRole[]              @relation("UserRoleUser")
+  leadsCreated                   Lead[]                  @relation("LeadCreatedBy")
+  leadsOwned                     Lead[]                  @relation("LeadCurrentOwner")
+  leadOwnerAssignmentsTo         LeadOwnerLog[]          @relation("LeadOwnerAssignedTo")
+  leadOwnerAssignmentsBy         LeadOwnerLog[]          @relation("LeadOwnerAssignedBy")
+  salesOrdersCreated             SalesOrder[]            @relation("SalesOrderCreatedBy")
+  paymentsCreated                Payment[]               @relation("PaymentCreatedBy")
+  appointmentsAsDoctor           Appointment[]           @relation("AppointmentDoctor")
+  appointmentsCreated            Appointment[]           @relation("AppointmentCreatedBy")
+  serviceEventsAsDoctor          CustomerServiceEvent[]  @relation("ServiceEventDoctor")
+  serviceEventsAsEmployee        CustomerServiceEvent[]  @relation("ServiceEventEmployee")
+  openedContainers               OpenedContainer[]       @relation("OpenedContainerOpenedBy")
+  stockMovementsCreated          StockMovement[]         @relation("StockMovementCreatedBy")
+  stockTransfersRequested        StockTransfer[]         @relation("StockTransferRequestedBy")
+  branchStockSalesCreated        BranchStockSale[]       @relation("BranchStockSaleCreatedBy")
+  branchStockRefundsApproved     BranchStockSaleRefund[] @relation("BranchStockSaleRefundApprovedBy")
+  refundsRequested               Refund[]                @relation("RefundRequestedBy")
+  refundsApproved                Refund[]                @relation("RefundApprovedBy")
+  commissionSnapshotsLeadOwner   CommissionSnapshot[]    @relation("CommissionSnapshotLeadOwner")
+  commissionSnapshotsSaleCreator CommissionSnapshot[]    @relation("CommissionSnapshotSaleCreator")
+  commissionsRecipient           Commission[]            @relation("CommissionRecipient")
+  commissionsCreatedBy           Commission[]            @relation("CommissionCreatedBy")
+  walletTransactionsCreatedBy    WalletTransaction[]     @relation("WalletTxnCreatedBy")
+  auditLogs                      AuditLog[]              @relation("AuditLogActor")
+
+  @@index([branchId, status])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        RoleCode @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[] @relation("RolePermissionRole")
+  userRoles       UserRole[]       @relation("UserRoleRole")
+  commissionRules CommissionRule[] @relation("CommissionRuleRole")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[] @relation("RolePermissionPermission")
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation("RolePermissionRole", fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation("RolePermissionPermission", fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id         String   @id @default(cuid())
+  userId     String
+  roleId     String
+  branchId   String?
+  createdAt  DateTime @default(now())
+  assignedBy String?
+
+  user   User    @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation("UserRoleRole", fields: [roleId], references: [id], onDelete: Cascade)
+  branch Branch? @relation("UserRoleBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId, branchId])
+  @@index([roleId, branchId])
+  @@index([branchId])
+  @@map("user_roles")
+}
+
+model Customer {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  fullName        String
+  phone           String?   @unique
+  email           String?   @unique
+  birthDate       DateTime?
+  notes           String?
+  currentBranchId String?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  currentBranch    Branch?                @relation("CustomerCurrentBranch", fields: [currentBranchId], references: [id], onDelete: SetNull)
+  leads            Lead[]                 @relation("LeadCustomer")
+  salesOrders      SalesOrder[]           @relation("SalesOrderCustomer")
+  appointments     Appointment[]          @relation("AppointmentCustomer")
+  serviceEvents    CustomerServiceEvent[] @relation("ServiceEventCustomer")
+  wallets          Wallet[]               @relation("WalletCustomer")
+  refunds          Refund[]               @relation("RefundCustomer")
+  branchStockSales BranchStockSale[]      @relation("BranchStockSaleCustomer")
+
+  @@index([currentBranchId])
+  @@index([fullName])
+  @@index([phone])
+  @@map("customers")
+}
+
+model Lead {
+  id                 String     @id @default(cuid())
+  code               String     @unique
+  branchId           String
+  customerId         String?
+  name               String
+  phone              String?
+  source             String?
+  status             LeadStatus @default(NEW)
+  currentOwnerUserId String?
+  createdByUserId    String
+  deletedAt          DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  branch              Branch               @relation("LeadBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  customer            Customer?            @relation("LeadCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  currentOwner        User?                @relation("LeadCurrentOwner", fields: [currentOwnerUserId], references: [id], onDelete: SetNull)
+  createdBy           User                 @relation("LeadCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  ownerLogs           LeadOwnerLog[]       @relation("LeadOwnerLogLead")
+  salesOrders         SalesOrder[]         @relation("SalesOrderLead")
+  commissionSnapshots CommissionSnapshot[] @relation("CommissionSnapshotLead")
+
+  @@index([branchId, status, createdAt])
+  @@index([currentOwnerUserId, updatedAt])
+  @@index([createdByUserId, createdAt])
+  @@index([customerId])
+  @@map("leads")
+}
+
+model LeadOwnerLog {
+  id               String    @id @default(cuid())
+  leadId           String
+  assignedToUserId String
+  assignedByUserId String
+  assignedAt       DateTime  @default(now())
+  endedAt          DateTime?
+  reason           String?
+
+  lead           Lead @relation("LeadOwnerLogLead", fields: [leadId], references: [id], onDelete: Cascade)
+  assignedToUser User @relation("LeadOwnerAssignedTo", fields: [assignedToUserId], references: [id], onDelete: Restrict)
+  assignedByUser User @relation("LeadOwnerAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([leadId, assignedAt])
+  @@index([assignedToUserId, assignedAt])
+  @@index([leadId, endedAt])
+  @@map("lead_owner_logs")
+}
+
+model Service {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  basePrice   Decimal?  @db.Decimal(18, 2)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  salesOrderItems SalesOrderItem[]       @relation("SalesOrderItemService")
+  appointments    Appointment[]          @relation("AppointmentService")
+  serviceEvents   CustomerServiceEvent[] @relation("ServiceEventService")
+  stockUsages     ServiceStockUsage[]    @relation("ServiceStockUsageService")
+  commissionRules CommissionRule[]       @relation("CommissionRuleService")
+
+  @@index([name])
+  @@map("services")
+}
+
+model SalesOrder {
+  id                 String           @id @default(cuid())
+  orderNo            String           @unique
+  branchId           String
+  customerId         String
+  leadId             String?
+  createdByUserId    String
+  status             SalesOrderStatus @default(DRAFT)
+  currency           String           @default("THB")
+  subtotalAmount     Decimal          @default(0) @db.Decimal(18, 2)
+  discountAmount     Decimal          @default(0) @db.Decimal(18, 2)
+  taxAmount          Decimal          @default(0) @db.Decimal(18, 2)
+  totalAmount        Decimal          @default(0) @db.Decimal(18, 2)
+  depositRequired    Decimal          @default(0) @db.Decimal(18, 2)
+  depositSatisfiedAt DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  branch              Branch                 @relation("SalesOrderBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  customer            Customer               @relation("SalesOrderCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  lead                Lead?                  @relation("SalesOrderLead", fields: [leadId], references: [id], onDelete: Restrict)
+  createdBy           User                   @relation("SalesOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items               SalesOrderItem[]       @relation("SalesOrderItemOrder")
+  payments            Payment[]              @relation("PaymentSalesOrder")
+  appointments        Appointment[]          @relation("AppointmentSalesOrder")
+  commissionSnapshots CommissionSnapshot[]   @relation("CommissionSnapshotSalesOrder")
+  commissions         Commission[]           @relation("CommissionSalesOrder")
+  refunds             Refund[]               @relation("RefundSalesOrder")
+  serviceEvents       CustomerServiceEvent[] @relation("ServiceEventSalesOrder")
+
+  @@index([branchId, status, createdAt])
+  @@index([leadId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@index([depositSatisfiedAt])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id                  String   @id @default(cuid())
+  salesOrderId        String
+  serviceId           String
+  quantity            Int      @default(1)
+  unitPrice           Decimal  @db.Decimal(18, 2)
+  discountAmount      Decimal  @default(0) @db.Decimal(18, 2)
+  netAmount           Decimal  @db.Decimal(18, 2)
+  snapshotServiceCode String
+  snapshotServiceName String
+  snapshotUnitPrice   Decimal  @db.Decimal(18, 2)
+  createdAt           DateTime @default(now())
+
+  salesOrder SalesOrder @relation("SalesOrderItemOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  service    Service    @relation("SalesOrderItemService", fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([salesOrderId])
+  @@index([serviceId])
+  @@map("sales_order_items")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  salesOrderId    String
+  amount          Decimal       @db.Decimal(18, 2)
+  paymentMethod   PaymentMethod
+  paymentType     PaymentType
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?
+  createdByUserId String
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  salesOrder SalesOrder @relation("PaymentSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation("PaymentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([salesOrderId, paymentType, status])
+  @@index([paidAt])
+  @@index([createdByUserId, createdAt])
+  @@map("payments")
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  appointmentNo   String            @unique
+  branchId        String
+  salesOrderId    String
+  customerId      String
+  serviceId       String
+  doctorUserId    String?
+  createdByUserId String
+  status          AppointmentStatus @default(BOOKED)
+  scheduledAt     DateTime
+  checkedInAt     DateTime?
+  completedAt     DateTime?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  branch        Branch                 @relation("AppointmentBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  salesOrder    SalesOrder             @relation("AppointmentSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  customer      Customer               @relation("AppointmentCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  service       Service                @relation("AppointmentService", fields: [serviceId], references: [id], onDelete: Restrict)
+  doctor        User?                  @relation("AppointmentDoctor", fields: [doctorUserId], references: [id], onDelete: SetNull)
+  createdBy     User                   @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  serviceEvents CustomerServiceEvent[] @relation("ServiceEventAppointment")
+
+  @@index([branchId, scheduledAt])
+  @@index([salesOrderId, status])
+  @@index([customerId, scheduledAt])
+  @@index([doctorUserId, scheduledAt])
+  @@map("appointments")
+}
+
+model CommissionRule {
+  id             String              @id @default(cuid())
+  roleId         String
+  commissionType CommissionType
+  valueType      CommissionValueType
+  value          Decimal             @db.Decimal(18, 4)
+  branchId       String?
+  serviceId      String?
+  minAmount      Decimal?            @db.Decimal(18, 2)
+  maxAmount      Decimal?            @db.Decimal(18, 2)
+  startsAt       DateTime
+  endsAt         DateTime?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  role      Role                 @relation("CommissionRuleRole", fields: [roleId], references: [id], onDelete: Cascade)
+  branch    Branch?              @relation("CommissionRuleBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  service   Service?             @relation("CommissionRuleService", fields: [serviceId], references: [id], onDelete: SetNull)
+  snapshots CommissionSnapshot[] @relation("CommissionSnapshotRule")
+
+  @@index([roleId, commissionType, startsAt, endsAt])
+  @@index([branchId, serviceId, isActive])
+  @@map("commission_rules")
+}
+
+model CommissionSnapshot {
+  id                           String              @id @default(cuid())
+  salesOrderId                 String
+  leadId                       String
+  commissionRuleId             String?
+  leadOwnerUserId              String?
+  saleCreatorUserId            String
+  commissionType               CommissionType
+  ruleValueType                CommissionValueType
+  ruleValue                    Decimal             @db.Decimal(18, 4)
+  computedAmount               Decimal             @db.Decimal(18, 2)
+  eligibilityDepositPaid       Boolean
+  eligibilityAppointmentBooked Boolean
+  eligibleAt                   DateTime?
+  lockedAt                     DateTime?
+  lockReason                   String?
+  snapshotLeadOwnerName        String?
+  snapshotSaleCreatorName      String
+  snapshotRoleCode             RoleCode?
+  snapshotServiceName          String?
+  snapshotBranchName           String?
+  createdAt                    DateTime            @default(now())
+
+  salesOrder      SalesOrder      @relation("CommissionSnapshotSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  lead            Lead            @relation("CommissionSnapshotLead", fields: [leadId], references: [id], onDelete: Restrict)
+  commissionRule  CommissionRule? @relation("CommissionSnapshotRule", fields: [commissionRuleId], references: [id], onDelete: SetNull)
+  leadOwnerUser   User?           @relation("CommissionSnapshotLeadOwner", fields: [leadOwnerUserId], references: [id], onDelete: SetNull)
+  saleCreatorUser User            @relation("CommissionSnapshotSaleCreator", fields: [saleCreatorUserId], references: [id], onDelete: Restrict)
+  commissions     Commission[]    @relation("CommissionSnapshot")
+
+  @@index([salesOrderId, commissionType])
+  @@index([leadOwnerUserId, eligibleAt])
+  @@index([saleCreatorUserId, eligibleAt])
+  @@index([lockedAt])
+  @@map("commission_snapshots")
+}
+
+model Commission {
+  id                String           @id @default(cuid())
+  snapshotId        String
+  salesOrderId      String
+  recipientUserId   String
+  createdByUserId   String?
+  type              CommissionType
+  status            CommissionStatus @default(PENDING)
+  amount            Decimal          @db.Decimal(18, 2)
+  currency          String           @default("THB")
+  eligibleAt        DateTime?
+  lockedAt          DateTime?
+  paidAt            DateTime?
+  revokedAt         DateTime?
+  revokedByRefundId String?
+  revokedReason     String?
+  note              String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  snapshot        CommissionSnapshot @relation("CommissionSnapshot", fields: [snapshotId], references: [id], onDelete: Cascade)
+  salesOrder      SalesOrder         @relation("CommissionSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  recipientUser   User               @relation("CommissionRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  createdByUser   User?              @relation("CommissionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  revokedByRefund Refund?            @relation("RefundRevokedCommissions", fields: [revokedByRefundId], references: [id], onDelete: SetNull)
+
+  @@index([status, eligibleAt])
+  @@index([recipientUserId, status, createdAt])
+  @@index([salesOrderId, type])
+  @@index([revokedByRefundId])
+  @@map("commissions")
+}
+
+model Refund {
+  id                String       @id @default(cuid())
+  refundNo          String       @unique
+  salesOrderId      String
+  customerId        String
+  requestedByUserId String
+  approvedByUserId  String?
+  refundType        RefundType
+  status            RefundStatus @default(REQUESTED)
+  amount            Decimal      @db.Decimal(18, 2)
+  reason            String?
+  approvedAt        DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  salesOrder         SalesOrder   @relation("RefundSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  customer           Customer     @relation("RefundCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  requestedByUser    User         @relation("RefundRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  approvedByUser     User?        @relation("RefundApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  revokedCommissions Commission[] @relation("RefundRevokedCommissions")
+
+  @@index([salesOrderId, status])
+  @@index([customerId, createdAt])
+  @@index([refundType, status])
+  @@map("refunds")
+}
+
+model CustomerServiceEvent {
+  id             String   @id @default(cuid())
+  customerId     String
+  branchId       String
+  serviceId      String
+  doctorUserId   String?
+  employeeUserId String?
+  salesOrderId   String?
+  appointmentId  String?
+  status         ServiceEventStatus @default(IN_PROGRESS)
+  performedAt    DateTime
+  completedAt    DateTime?
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  customer     Customer            @relation("ServiceEventCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  branch       Branch              @relation("ServiceEventBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  service      Service             @relation("ServiceEventService", fields: [serviceId], references: [id], onDelete: Restrict)
+  doctorUser   User?               @relation("ServiceEventDoctor", fields: [doctorUserId], references: [id], onDelete: SetNull)
+  employeeUser User?               @relation("ServiceEventEmployee", fields: [employeeUserId], references: [id], onDelete: SetNull)
+  salesOrder   SalesOrder?         @relation("ServiceEventSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
+  appointment  Appointment?        @relation("ServiceEventAppointment", fields: [appointmentId], references: [id], onDelete: SetNull)
+  stockUsages  ServiceStockUsage[] @relation("ServiceStockUsageEvent")
+
+  @@index([customerId, performedAt])
+  @@index([branchId, performedAt])
+  @@index([serviceId, performedAt])
+  @@index([doctorUserId, performedAt])
+  @@map("customer_service_events")
+}
+
+model Unit {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  label     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockItemsPrimary   StockItem[] @relation("StockItemPrimaryUnit")
+  stockItemsSecondary StockItem[] @relation("StockItemSecondaryUnit")
+
+  @@map("units")
+}
+
+model Warehouse {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String
+  type      WarehouseType
+  branchId  String?
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  branch             Branch?             @relation("WarehouseBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  stockLots          StockLot[]          @relation("StockLotWarehouse")
+  stockMovements     StockMovement[]     @relation("StockMovementWarehouse")
+  stockTransfersFrom StockTransfer[]     @relation("StockTransferFromWarehouse")
+  stockTransfersTo   StockTransfer[]     @relation("StockTransferToWarehouse")
+  transferItemsFrom  StockTransferItem[] @relation("StockTransferItemFromWarehouse")
+  transferItemsTo    StockTransferItem[] @relation("StockTransferItemToWarehouse")
+  openedContainers   OpenedContainer[]   @relation("OpenedContainerWarehouse")
+
+  @@index([type])
+  @@index([branchId, type])
+  @@map("warehouses")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockLots        StockLot[]        @relation("StockLotSupplier")
+  purchaseReceipts PurchaseReceipt[] @relation("PurchaseReceiptSupplier")
+
+  @@map("suppliers")
+}
+
+model PurchaseReceipt {
+  id          String    @id @default(cuid())
+  referenceNo String    @unique
+  branchId    String?
+  supplierId  String?
+  purchasedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  branch    Branch?    @relation("PurchaseReceiptBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  supplier  Supplier?  @relation("PurchaseReceiptSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  stockLots StockLot[] @relation("StockLotPurchaseReceipt")
+
+  @@index([supplierId])
+  @@index([branchId, purchasedAt])
+  @@map("purchase_receipts")
+}
+
+model StockItem {
+  id                  String              @id @default(cuid())
+  sku                 String              @unique
+  name                String
+  type                StockItemType
+  primaryUnitId       String
+  secondaryUnitId     String?
+  conversionFactor    Decimal?            @db.Decimal(18, 6)
+  consumptionStrategy ConsumptionStrategy
+  isSellable          Boolean             @default(false)
+  trackLot            Boolean             @default(true)
+  isActive            Boolean             @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  primaryUnit          Unit                  @relation("StockItemPrimaryUnit", fields: [primaryUnitId], references: [id], onDelete: Restrict)
+  secondaryUnit        Unit?                 @relation("StockItemSecondaryUnit", fields: [secondaryUnitId], references: [id], onDelete: SetNull)
+  stockLots            StockLot[]            @relation("StockLotItem")
+  transferItems        StockTransferItem[]   @relation("StockTransferItemItem")
+  openedContainers     OpenedContainer[]     @relation("OpenedContainerItem")
+  stockUsages          ServiceStockUsage[]   @relation("ServiceStockUsageItem")
+  branchStockSaleItems BranchStockSaleItem[] @relation("BranchStockSaleItemItem")
+
+  @@index([type, isActive])
+  @@index([name])
+  @@index([primaryUnitId])
+  @@map("stock_items")
+}
+
+model StockLot {
+  id                String         @id @default(cuid())
+  stockItemId       String
+  warehouseId       String
+  lotCode           String
+  parentLotId       String?
+  supplierId        String?
+  purchaseReceiptId String?
+  purchaseReference String?
+  quantityReceived  Decimal        @db.Decimal(18, 6)
+  quantityOnHand    Decimal        @db.Decimal(18, 6)
+  quantityReserved  Decimal        @default(0) @db.Decimal(18, 6)
+  unitCost          Decimal        @db.Decimal(18, 4)
+  receivedAt        DateTime       @default(now())
+  manufacturedAt    DateTime?
+  expiresAt         DateTime?
+  status            StockLotStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  stockItem            StockItem             @relation("StockLotItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+  warehouse            Warehouse             @relation("StockLotWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  parentLot            StockLot?             @relation("StockLotSplit", fields: [parentLotId], references: [id], onDelete: SetNull)
+  childLots            StockLot[]            @relation("StockLotSplit")
+  supplier             Supplier?             @relation("StockLotSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseReceipt      PurchaseReceipt?      @relation("StockLotPurchaseReceipt", fields: [purchaseReceiptId], references: [id], onDelete: SetNull)
+  stockMovements       StockMovement[]       @relation("StockMovementLot")
+  transferItemsFrom    StockTransferItem[]   @relation("StockTransferItemFromLot")
+  transferItemsTo      StockTransferItem[]   @relation("StockTransferItemToLot")
+  openedContainers     OpenedContainer[]     @relation("OpenedContainerLot")
+  stockUsages          ServiceStockUsage[]   @relation("ServiceStockUsageLot")
+  branchStockSaleItems BranchStockSaleItem[] @relation("BranchStockSaleItemLot")
+
+  @@unique([warehouseId, lotCode])
+  @@index([warehouseId, status])
+  @@index([warehouseId, expiresAt, status])
+  @@index([stockItemId, expiresAt, status])
+  @@index([parentLotId])
+  @@index([supplierId])
+  @@index([purchaseReceiptId])
+  @@map("stock_lots")
+}
+
+model StockMovement {
+  id              String            @id @default(cuid())
+  stockLotId      String
+  warehouseId     String
+  createdByUserId String?
+  type            StockMovementType
+  quantityDelta   Decimal           @db.Decimal(18, 6)
+  unitCost        Decimal?          @db.Decimal(18, 4)
+  referenceType   String?
+  referenceId     String?
+  note            String?
+  createdAt       DateTime          @default(now())
+
+  stockLot      StockLot  @relation("StockMovementLot", fields: [stockLotId], references: [id], onDelete: Cascade)
+  warehouse     Warehouse @relation("StockMovementWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdByUser User?     @relation("StockMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([warehouseId, createdAt])
+  @@index([stockLotId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+model StockTransfer {
+  id                String              @id @default(cuid())
+  transferNo        String              @unique
+  fromWarehouseId   String
+  toWarehouseId     String
+  fromBranchId      String?
+  toBranchId        String?
+  requestedByUserId String?
+  status            StockTransferStatus @default(DRAFT)
+  requestedAt       DateTime?
+  approvedAt        DateTime?
+  dispatchedAt      DateTime?
+  receivedAt        DateTime?
+  note              String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  fromWarehouse   Warehouse           @relation("StockTransferFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+  toWarehouse     Warehouse           @relation("StockTransferToWarehouse", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+  fromBranch      Branch?             @relation("StockTransferFromBranch", fields: [fromBranchId], references: [id], onDelete: SetNull)
+  toBranch        Branch?             @relation("StockTransferToBranch", fields: [toBranchId], references: [id], onDelete: SetNull)
+  requestedByUser User?               @relation("StockTransferRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  items           StockTransferItem[] @relation("StockTransferItemTransfer")
+
+  @@index([fromWarehouseId, status, createdAt])
+  @@index([toWarehouseId, status, createdAt])
+  @@index([fromBranchId, toBranchId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id                String   @id @default(cuid())
+  stockTransferId   String
+  stockItemId       String
+  fromWarehouseId   String
+  toWarehouseId     String
+  fromStockLotId    String
+  toStockLotId      String?
+  quantityRequested Decimal  @db.Decimal(18, 6)
+  quantitySent      Decimal? @db.Decimal(18, 6)
+  quantityReceived  Decimal? @db.Decimal(18, 6)
+  createdAt         DateTime @default(now())
+
+  stockTransfer StockTransfer @relation("StockTransferItemTransfer", fields: [stockTransferId], references: [id], onDelete: Cascade)
+  stockItem     StockItem     @relation("StockTransferItemItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+  fromWarehouse Warehouse     @relation("StockTransferItemFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+  toWarehouse   Warehouse     @relation("StockTransferItemToWarehouse", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+  fromStockLot  StockLot      @relation("StockTransferItemFromLot", fields: [fromStockLotId], references: [id], onDelete: Restrict)
+  toStockLot    StockLot?     @relation("StockTransferItemToLot", fields: [toStockLotId], references: [id], onDelete: SetNull)
+
+  @@index([stockTransferId])
+  @@index([stockItemId])
+  @@index([fromStockLotId])
+  @@index([toStockLotId])
+  @@map("stock_transfer_items")
+}
+
+model OpenedContainer {
+  id                  String                @id @default(cuid())
+  stockItemId         String
+  stockLotId          String
+  warehouseId         String
+  openedByUserId      String
+  openedAt            DateTime              @default(now())
+  expiryAt            DateTime?
+  initialQtyPrimary   Decimal               @db.Decimal(18, 6)
+  remainingQtyPrimary Decimal               @db.Decimal(18, 6)
+  status              OpenedContainerStatus @default(ACTIVE)
+  note                String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  stockItem    StockItem           @relation("OpenedContainerItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+  stockLot     StockLot            @relation("OpenedContainerLot", fields: [stockLotId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse           @relation("OpenedContainerWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  openedByUser User                @relation("OpenedContainerOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  stockUsages  ServiceStockUsage[] @relation("ServiceStockUsageOpenedContainer")
+
+  @@index([warehouseId, status])
+  @@index([stockLotId, status])
+  @@index([status, expiryAt])
+  @@index([openedByUserId, openedAt])
+  @@map("opened_containers")
+}
+
+model ServiceStockUsage {
+  id                     String   @id @default(cuid())
+  customerServiceEventId String
+  serviceId              String
+  stockItemId            String
+  stockLotId             String
+  openedContainerId      String?
+  quantityPrimaryUsed    Decimal  @db.Decimal(18, 6)
+  createdAt              DateTime @default(now())
+
+  customerServiceEvent CustomerServiceEvent @relation("ServiceStockUsageEvent", fields: [customerServiceEventId], references: [id], onDelete: Cascade)
+  service              Service              @relation("ServiceStockUsageService", fields: [serviceId], references: [id], onDelete: Restrict)
+  stockItem            StockItem            @relation("ServiceStockUsageItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+  stockLot             StockLot             @relation("ServiceStockUsageLot", fields: [stockLotId], references: [id], onDelete: Restrict)
+  openedContainer      OpenedContainer?     @relation("ServiceStockUsageOpenedContainer", fields: [openedContainerId], references: [id], onDelete: SetNull)
+
+  @@index([customerServiceEventId])
+  @@index([stockLotId, createdAt])
+  @@index([openedContainerId, createdAt])
+  @@map("service_stock_usage")
+}
+
+model SalesChannel {
+  id        String           @id @default(cuid())
+  code      SalesChannelCode @unique
+  name      String
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+
+  branchStockSales BranchStockSale[] @relation("BranchStockSaleChannel")
+
+  @@map("sales_channels")
+}
+
+model BranchStockSale {
+  id              String                @id @default(cuid())
+  saleNo          String                @unique
+  branchId        String
+  customerId      String?
+  salesChannelId  String
+  createdByUserId String?
+  status          BranchStockSaleStatus @default(DRAFT)
+  currency        String                @default("THB")
+  subtotalAmount  Decimal               @default(0) @db.Decimal(18, 2)
+  discountAmount  Decimal               @default(0) @db.Decimal(18, 2)
+  totalAmount     Decimal               @default(0) @db.Decimal(18, 2)
+  paidAt          DateTime?
+  refundAmount    Decimal               @default(0) @db.Decimal(18, 2)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  branch        Branch                  @relation("BranchStockSaleBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  customer      Customer?               @relation("BranchStockSaleCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  salesChannel  SalesChannel            @relation("BranchStockSaleChannel", fields: [salesChannelId], references: [id], onDelete: Restrict)
+  createdByUser User?                   @relation("BranchStockSaleCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items         BranchStockSaleItem[]   @relation("BranchStockSaleItemSale")
+  refunds       BranchStockSaleRefund[] @relation("BranchStockSaleRefundSale")
+
+  @@index([branchId, status, createdAt])
+  @@index([salesChannelId, createdAt])
+  @@index([customerId, createdAt])
+  @@map("branch_stock_sales")
+}
+
+model BranchStockSaleItem {
+  id                String   @id @default(cuid())
+  branchStockSaleId String
+  stockItemId       String
+  stockLotId        String
+  quantity          Decimal  @db.Decimal(18, 6)
+  unitPrice         Decimal  @db.Decimal(18, 2)
+  netAmount         Decimal  @db.Decimal(18, 2)
+  snapshotItemName  String
+  snapshotUnitLabel String
+  snapshotUnitPrice Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  branchStockSale BranchStockSale @relation("BranchStockSaleItemSale", fields: [branchStockSaleId], references: [id], onDelete: Cascade)
+  stockItem       StockItem       @relation("BranchStockSaleItemItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+  stockLot        StockLot        @relation("BranchStockSaleItemLot", fields: [stockLotId], references: [id], onDelete: Restrict)
+
+  @@index([branchStockSaleId])
+  @@index([stockItemId])
+  @@index([stockLotId])
+  @@map("branch_stock_sale_items")
+}
+
+model BranchStockSaleRefund {
+  id                String       @id @default(cuid())
+  branchStockSaleId String
+  refundNo          String       @unique
+  amount            Decimal      @db.Decimal(18, 2)
+  reason            String?
+  status            RefundStatus @default(REQUESTED)
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  branchStockSale BranchStockSale @relation("BranchStockSaleRefundSale", fields: [branchStockSaleId], references: [id], onDelete: Cascade)
+  approvedByUser  User?           @relation("BranchStockSaleRefundApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([branchStockSaleId, status])
+  @@index([approvedByUserId])
+  @@map("branch_stock_sale_refunds")
+}
+
+model Wallet {
+  id         String     @id @default(cuid())
+  customerId String
+  type       WalletType
+  balance    Decimal    @default(0) @db.Decimal(18, 2)
+  currency   String     @default("THB")
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  customer     Customer            @relation("WalletCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[] @relation("WalletTxnWallet")
+
+  @@unique([customerId, type])
+  @@index([customerId, type])
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String                @id @default(cuid())
+  walletId        String
+  branchId        String?
+  createdByUserId String?
+  type            WalletTransactionType
+  referenceType   WalletReferenceType?
+  referenceId     String?
+  amount          Decimal               @db.Decimal(18, 2)
+  balanceBefore   Decimal               @db.Decimal(18, 2)
+  balanceAfter    Decimal               @db.Decimal(18, 2)
+  note            String?
+  metadata        Json?
+  createdAt       DateTime              @default(now())
+
+  wallet        Wallet  @relation("WalletTxnWallet", fields: [walletId], references: [id], onDelete: Cascade)
+  branch        Branch? @relation("WalletTxnBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  createdByUser User?   @relation("WalletTxnCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([branchId, createdAt])
+  @@map("wallet_transactions")
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  actorUserId String?
+  branchId    String?
+  entityType  String
+  entityId    String
+  action      AuditAction
+  payload     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  actor  User?   @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  branch Branch? @relation("AuditLogBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([branchId, createdAt])
+  @@map("audit_logs")
+}
