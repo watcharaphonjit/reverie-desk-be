@@ -62,35 +62,107 @@ export class ServiceEventsService {
     user: AuthenticatedUser,
     dto: CreateServiceEventDto,
   ): Promise<ServiceEventWithRelations> {
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id: dto.appointmentId },
-      select: {
-        id: true,
-        branchId: true,
-        salesOrderId: true,
-        customerId: true,
-        serviceId: true,
-        status: true,
-      },
-    });
-    if (!appointment) throw new NotFoundException('Appointment not found');
-    assertBranchAccess(user, appointment.branchId);
+    // Spec accepts both flows: pre-booked (appointmentId provided) and
+    // walk-in (appointmentId omitted — branchId/customerId/serviceId come
+    // straight from the request). We resolve a single canonical {branchId,
+    // customerId, serviceId, salesOrderId, appointmentId?} tuple here and
+    // run all downstream guards against it.
+    let resolvedBranchId = dto.branchId;
+    let resolvedCustomerId = dto.customerId;
+    let resolvedServiceId = dto.serviceId;
+    let resolvedSalesOrderId: string | null = dto.salesOrderId ?? null;
+    let resolvedAppointmentId: string | null = null;
 
-    if (appointment.status !== AppointmentStatus.CHECKED_IN) {
-      throw new BadRequestException(
-        `Appointment must be CHECKED_IN to record a service event (current: ${appointment.status})`,
-      );
+    if (dto.appointmentId) {
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: dto.appointmentId },
+        select: {
+          id: true,
+          branchId: true,
+          salesOrderId: true,
+          customerId: true,
+          serviceId: true,
+          status: true,
+        },
+      });
+      if (!appointment) throw new NotFoundException('Appointment not found');
+      assertBranchAccess(user, appointment.branchId);
+
+      if (appointment.status !== AppointmentStatus.CHECKED_IN) {
+        throw new BadRequestException(
+          `Appointment must be CHECKED_IN to record a service event (current: ${appointment.status})`,
+        );
+      }
+      if (appointment.customerId !== dto.customerId) {
+        throw new BadRequestException(
+          'Customer does not match the appointment customer',
+        );
+      }
+      if (appointment.serviceId !== dto.serviceId) {
+        throw new BadRequestException(
+          'Service does not match the appointment service',
+        );
+      }
+      if (appointment.branchId !== dto.branchId) {
+        throw new BadRequestException(
+          'branchId does not match the appointment branch',
+        );
+      }
+      if (
+        dto.salesOrderId &&
+        dto.salesOrderId !== appointment.salesOrderId
+      ) {
+        throw new BadRequestException(
+          'salesOrderId does not match the appointment sales order',
+        );
+      }
+
+      resolvedAppointmentId = appointment.id;
+      resolvedSalesOrderId = appointment.salesOrderId;
+    } else {
+      // Walk-in path: validate the requested branch is accessible to this
+      // user and that the customer/service/sales-order references resolve.
+      assertBranchAccess(user, dto.branchId);
+      const [customer, service, salesOrder] = await Promise.all([
+        this.prisma.customer.findUnique({
+          where: { id: dto.customerId },
+          select: { id: true, deletedAt: true },
+        }),
+        this.prisma.service.findUnique({
+          where: { id: dto.serviceId },
+          select: { id: true, isActive: true },
+        }),
+        dto.salesOrderId
+          ? this.prisma.salesOrder.findUnique({
+              where: { id: dto.salesOrderId },
+              select: { id: true, branchId: true, customerId: true },
+            })
+          : Promise.resolve(null),
+      ]);
+      if (!customer || customer.deletedAt) {
+        throw new BadRequestException('Customer does not exist');
+      }
+      if (!service) throw new BadRequestException('Service does not exist');
+      if (!service.isActive) {
+        throw new BadRequestException('Service is not active');
+      }
+      if (dto.salesOrderId) {
+        if (!salesOrder) {
+          throw new BadRequestException('Sales order does not exist');
+        }
+        if (salesOrder.branchId !== dto.branchId) {
+          throw new BadRequestException(
+            'salesOrder.branchId does not match request branchId',
+          );
+        }
+        if (salesOrder.customerId !== dto.customerId) {
+          throw new BadRequestException(
+            'salesOrder.customerId does not match request customerId',
+          );
+        }
+      }
     }
-    if (appointment.customerId !== dto.customerId) {
-      throw new BadRequestException(
-        'Customer does not match the appointment customer',
-      );
-    }
-    if (appointment.serviceId !== dto.serviceId) {
-      throw new BadRequestException(
-        'Service does not match the appointment service',
-      );
-    }
+
     if (dto.doctorUserId) await this.assertUserActive(dto.doctorUserId, 'Doctor');
     if (dto.employeeUserId)
       await this.assertUserActive(dto.employeeUserId, 'Employee');
@@ -100,13 +172,13 @@ export class ServiceEventsService {
     return this.prisma.$transaction(async (tx) => {
       const event = await tx.customerServiceEvent.create({
         data: {
-          customerId: appointment.customerId,
-          branchId: appointment.branchId,
-          serviceId: appointment.serviceId,
+          customerId: resolvedCustomerId,
+          branchId: resolvedBranchId,
+          serviceId: resolvedServiceId,
           doctorUserId: dto.doctorUserId ?? null,
           employeeUserId: dto.employeeUserId ?? null,
-          salesOrderId: appointment.salesOrderId,
-          appointmentId: appointment.id,
+          salesOrderId: resolvedSalesOrderId,
+          appointmentId: resolvedAppointmentId,
           status: ServiceEventStatus.IN_PROGRESS,
           performedAt,
           notes: dto.notes,
@@ -128,6 +200,7 @@ export class ServiceEventsService {
           doctorUserId: event.doctorUserId,
           employeeUserId: event.employeeUserId,
           performedAt: event.performedAt.toISOString(),
+          walkIn: resolvedAppointmentId === null,
         },
       });
 
@@ -244,6 +317,17 @@ export class ServiceEventsService {
       ) {
         throw new BadRequestException(
           'Stock item requires partial consumption via an OpenedContainer; open a container first and consume against it',
+        );
+      }
+      // WHOLE_ONLY items (boxed retail/clinical SKUs) can only be consumed
+      // in integer quantities. Reject fractional quantities loudly so
+      // someone doesn't accidentally write off 0.5 of a sealed box.
+      if (
+        lot.stockItem.consumptionStrategy === ConsumptionStrategy.WHOLE_ONLY &&
+        !Number.isInteger(dto.quantity)
+      ) {
+        throw new BadRequestException(
+          `Stock item is WHOLE_ONLY; quantity must be an integer (got ${dto.quantity})`,
         );
       }
       const onHand = decToNum(lot.quantityOnHand);

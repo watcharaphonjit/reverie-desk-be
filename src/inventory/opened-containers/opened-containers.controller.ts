@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -37,6 +38,8 @@ const WRITE_ROLES = [
   'DOCTOR',
 ] as const;
 
+@ApiTags('inventory-opened-containers')
+@ApiBearerAuth('bearer')
 @Controller('opened-containers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...READ_ROLES)
@@ -46,6 +49,18 @@ export class OpenedContainersController {
   @Post()
   @Roles(...WRITE_ROLES)
   open(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: OpenContainerDto,
+  ) {
+    return this.containers.open(user, dto);
+  }
+
+  // Spec wants the explicit `/open` path. Same handler as POST / above so
+  // either route is valid; we don't drop the bare path because existing
+  // callers + smoke tests rely on it.
+  @Post('open')
+  @Roles(...WRITE_ROLES)
+  openExplicit(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: OpenContainerDto,
   ) {

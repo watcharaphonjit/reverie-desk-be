@@ -109,6 +109,29 @@ export class OpenedContainersService {
       );
     }
 
+    // If the caller passed any of the optional cross-check fields, they
+    // must agree with what we'd derive from the lot — silently ignoring a
+    // mismatch would let the front-end develop subtly incorrect mental
+    // models of inventory.
+    if (dto.stockItemId && dto.stockItemId !== lot.stockItemId) {
+      throw new BadRequestException(
+        'stockItemId does not match the lot.stockItemId',
+      );
+    }
+    if (dto.warehouseId && dto.warehouseId !== lot.warehouseId) {
+      throw new BadRequestException(
+        'warehouseId does not match the lot.warehouseId',
+      );
+    }
+    if (
+      dto.initialQtyPrimary != null &&
+      Math.abs(dto.initialQtyPrimary - conversionFactor) > 1e-6
+    ) {
+      throw new BadRequestException(
+        `initialQtyPrimary (${dto.initialQtyPrimary}) must match stock item conversionFactor (${conversionFactor})`,
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // Row-lock the lot for the duration of the transaction so two concurrent
       // opens can't both see quantityOnHand=1 and double-deduct.

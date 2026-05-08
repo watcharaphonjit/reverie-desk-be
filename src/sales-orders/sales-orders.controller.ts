@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,6 +25,8 @@ import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { UpdateSalesOrderDto } from './dto/update-sales-order.dto';
 import { SalesOrdersService } from './sales-orders.service';
 
+@ApiTags('sales-orders')
+@ApiBearerAuth('bearer')
 @Controller('sales-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'CS')

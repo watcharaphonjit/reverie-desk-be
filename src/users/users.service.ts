@@ -234,6 +234,33 @@ export class UsersService {
     return rows.map((r) => r.role.code);
   }
 
+  /**
+   * Resolve a user's effective permission set as a flat list of codes,
+   * deduped across roles. One indexed query joining
+   * userRoles → role → rolePermissions → permission.
+   */
+  async getPermissionCodes(userId: string): Promise<string[]> {
+    const rows = await this.prisma.userRole.findMany({
+      where: { userId },
+      select: {
+        role: {
+          select: {
+            rolePermissions: {
+              select: { permission: { select: { code: true } } },
+            },
+          },
+        },
+      },
+    });
+    const set = new Set<string>();
+    for (const ur of rows) {
+      for (const rp of ur.role.rolePermissions) {
+        set.add(rp.permission.code);
+      }
+    }
+    return Array.from(set);
+  }
+
   // ───────────────────────── helpers ─────────────────────────
   private async requireUser(id: string) {
     const user = await this.prisma.user.findUnique({

@@ -1,0 +1,97 @@
+# Local-development docker-compose stack.
+#
+# Boots Postgres + Redis + the API container. The API container runs
+# Prisma migrations on start and then `node dist/src/main.js`. A second
+# service (worker) shares the same image but overrides CMD to run the
+# BullMQ worker process.
+#
+# Bring up:   docker compose up --build
+# Tear down:  docker compose down -v
+#
+# The .env at the project root supplies real values; the keys here only
+# pin defaults useful for `docker compose up` without an .env file.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: reverie
+      POSTGRES_PASSWORD: reverie
+      POSTGRES_DB: reverie_desk
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U reverie -d reverie_desk']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://reverie:reverie@postgres:5432/reverie_desk
+      JWT_SECRET: ${JWT_SECRET:-change-me-change-me-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_QUEUES: 'true'
+    ports:
+      - '3000:3000'
+    command:
+      - sh
+      - -c
+      - 'npx prisma migrate deploy && node dist/src/main.js'
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://reverie:reverie@postgres:5432/reverie_desk
+      JWT_SECRET: ${JWT_SECRET:-change-me-change-me-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    command: ['node', 'dist/src/worker.js']
+
+volumes:
+  postgres-data:
+  redis-data:

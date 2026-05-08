@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -18,6 +19,8 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { ListBranchesQuery } from './dto/list-branches.query';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 
+@ApiTags('branches')
+@ApiBearerAuth('bearer')
 @Controller('branches')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BranchesController {

@@ -6,7 +6,7 @@ framework_versions:
   max: 11.x
   recommended: 10.4.0
 compatible_agents:
-  backend-developer: ">=3.0.0"
+  backend-developer: '>=3.0.0'
 description: Comprehensive NestJS reference with advanced patterns, microservices, and GraphQL
 ---
 
@@ -68,6 +68,7 @@ src/
 ### Module Design Principles
 
 **1. Single Responsibility**
+
 ```typescript
 // users.module.ts - Focused on user management only
 @Module({
@@ -89,6 +90,7 @@ export class UsersModule {}
 ```
 
 **2. Encapsulation**
+
 ```typescript
 // Internal implementation detail - not exported
 @Injectable()
@@ -118,6 +120,7 @@ export class UserService {
 ```
 
 **3. Dependency Inversion**
+
 ```typescript
 // Define interface (abstraction)
 export interface IEmailService {
@@ -286,6 +289,7 @@ export class AuthService {
 ```
 
 **Better approach: Extract shared logic**
+
 ```typescript
 // Avoid circular dependencies by extracting shared logic
 @Injectable()
@@ -396,15 +400,17 @@ export class UserController {
 
   // POST /api/v1/users/:id/avatar
   @Post(':id/avatar')
-  @UseInterceptors(FileInterceptor('file', {
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter: (req, file, cb) => {
-      if (!file.mimetype.match(/\/(jpg|jpeg|png)$/)) {
-        return cb(new BadRequestException('Only images allowed'), false);
-      }
-      cb(null, true);
-    },
-  }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png)$/)) {
+          return cb(new BadRequestException('Only images allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UploadAvatarDto })
   async uploadAvatar(
@@ -420,6 +426,7 @@ export class UserController {
 ### API Versioning
 
 **URI Versioning**
+
 ```typescript
 // v1/users.controller.ts
 @Controller({ path: 'users', version: '1' })
@@ -446,6 +453,7 @@ app.enableVersioning({
 ```
 
 **Header Versioning**
+
 ```typescript
 // main.ts
 app.enableVersioning({
@@ -627,11 +635,14 @@ export class OrderService {
       });
 
       // Process payment
-      const payment = await this.paymentService.charge({
-        orderId: order.id,
-        amount: order.total,
-        customerId: dto.userId,
-      }, queryRunner);
+      const payment = await this.paymentService.charge(
+        {
+          orderId: order.id,
+          amount: order.total,
+          customerId: dto.userId,
+        },
+        queryRunner,
+      );
 
       // Update inventory
       for (const item of dto.items) {
@@ -730,7 +741,7 @@ export class User {
   @DeleteDateColumn()
   deletedAt: Date;
 
-  @OneToMany(() => Order, order => order.user)
+  @OneToMany(() => Order, (order) => order.user)
   orders: Order[];
 
   @ManyToMany(() => Permission)
@@ -768,17 +779,17 @@ export class UserRepository {
     const { page = 1, limit = 20, search } = options;
     const skip = (page - 1) * limit;
 
-    const query = this.repository.createQueryBuilder('user')
+    const query = this.repository
+      .createQueryBuilder('user')
       .leftJoinAndSelect('user.permissions', 'permissions')
       .take(limit)
       .skip(skip);
 
     // Add search condition
     if (search) {
-      query.where(
-        'user.email ILIKE :search OR user.name ILIKE :search',
-        { search: `%${search}%` },
-      );
+      query.where('user.email ILIKE :search OR user.name ILIKE :search', {
+        search: `%${search}%`,
+      });
     }
 
     // Add soft delete filter
@@ -826,7 +837,8 @@ export class UserRepository {
 
   // Complex query with QueryBuilder
   async findUsersWithOrdersAboveAmount(amount: number): Promise<User[]> {
-    return this.repository.createQueryBuilder('user')
+    return this.repository
+      .createQueryBuilder('user')
       .leftJoin('user.orders', 'order')
       .where('order.total > :amount', { amount })
       .groupBy('user.id')
@@ -1097,7 +1109,7 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    return requiredRoles.some(role => user.role === role);
+    return requiredRoles.some((role) => user.role === role);
   }
 }
 
@@ -1147,8 +1159,8 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Insufficient permissions');
     }
 
-    const hasPermission = requiredPermissions.every(required =>
-      user.permissions.some(permission => permission.name === required),
+    const hasPermission = requiredPermissions.every((required) =>
+      user.permissions.some((permission) => permission.name === required),
     );
 
     if (!hasPermission) {
@@ -1184,7 +1196,10 @@ export class PostsController {
   ): Promise<Post> {
     // Check if user owns the post or has general update permission
     const post = await this.postsService.findById(id);
-    if (post.authorId !== user.id && !user.permissions.includes(Permission.POST_UPDATE)) {
+    if (
+      post.authorId !== user.id &&
+      !user.permissions.includes(Permission.POST_UPDATE)
+    ) {
       throw new ForbiddenException();
     }
     return this.postsService.update(id, dto);
@@ -1293,9 +1308,7 @@ export class UserResolver {
   }
 
   @Mutation(() => UserObjectType)
-  async createUser(
-    @Args('input') input: CreateUserInput,
-  ): Promise<User> {
+  async createUser(@Args('input') input: CreateUserInput): Promise<User> {
     return this.userService.create(input);
   }
 
@@ -1333,14 +1346,14 @@ export class OrdersLoader implements NestDataLoader<number, Order[]> {
 
       // Group orders by userId
       const ordersMap = new Map<number, Order[]>();
-      orders.forEach(order => {
+      orders.forEach((order) => {
         const userOrders = ordersMap.get(order.userId) || [];
         userOrders.push(order);
         ordersMap.set(order.userId, userOrders);
       });
 
       // Return in same order as userIds
-      return userIds.map(id => ordersMap.get(id) || []);
+      return userIds.map((id) => ordersMap.get(id) || []);
     });
   }
 }
@@ -1470,9 +1483,7 @@ export class UsersGatewayController {
 
   @Get(':id')
   async getUser(@Param('id') id: number): Promise<User> {
-    return firstValueFrom(
-      this.usersClient.send({ cmd: 'get_user' }, { id }),
-    );
+    return firstValueFrom(this.usersClient.send({ cmd: 'get_user' }, { id }));
   }
 
   @Post()
@@ -1617,10 +1628,16 @@ export class LoggingInterceptor implements NestInterceptor {
 
 // common/interceptors/transform.interceptor.ts
 @Injectable()
-export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T>> {
+export class TransformInterceptor<T> implements NestInterceptor<
+  T,
+  Response<T>
+> {
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<Response<T>> {
     return next.handle().pipe(
-      map(data => ({
+      map((data) => ({
         success: true,
         data,
         timestamp: new Date().toISOString(),
@@ -1634,7 +1651,10 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
 export class CacheInterceptor implements NestInterceptor {
   constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
 
-  async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
     const cacheKey = `cache:${request.method}:${request.url}`;
 
@@ -1722,9 +1742,7 @@ async create(
 // users/users.service.ts
 @Injectable()
 export class UsersService {
-  constructor(
-    private readonly eventEmitter: EventEmitter2,
-  ) {}
+  constructor(private readonly eventEmitter: EventEmitter2) {}
 
   async create(dto: CreateUserDto): Promise<User> {
     const user = await this.repository.create(dto);
@@ -1971,7 +1989,9 @@ describe('UserService', () => {
         ...dto,
         password: hashedPassword,
       });
-      expect(eventEmitter.emit).toHaveBeenCalledWith('user.created', { user: createdUser });
+      expect(eventEmitter.emit).toHaveBeenCalledWith('user.created', {
+        user: createdUser,
+      });
       expect(cacheManager.del).toHaveBeenCalledWith('users:list');
       expect(result).toEqual(createdUser);
     });
@@ -1980,7 +2000,9 @@ describe('UserService', () => {
       repository.findByEmail.mockResolvedValue({ id: 1, email: dto.email });
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
-      await expect(service.create(dto)).rejects.toThrow('User with this email already exists');
+      await expect(service.create(dto)).rejects.toThrow(
+        'User with this email already exists',
+      );
 
       expect(passwordService.hash).not.toHaveBeenCalled();
       expect(repository.create).not.toHaveBeenCalled();
@@ -2001,7 +2023,9 @@ describe('UserService', () => {
 
       expect(repository.save).toHaveBeenCalled();
       expect(cacheManager.del).toHaveBeenCalledWith('user:1');
-      expect(eventEmitter.emit).toHaveBeenCalledWith('user.updated', { user: updatedUser });
+      expect(eventEmitter.emit).toHaveBeenCalledWith('user.updated', {
+        user: updatedUser,
+      });
       expect(result).toEqual(updatedUser);
     });
 
@@ -2014,7 +2038,9 @@ describe('UserService', () => {
       repository.findByEmail.mockResolvedValue({ id: 2, email: dto.email });
 
       await expect(service.update(1, dto)).rejects.toThrow(ConflictException);
-      await expect(service.update(1, dto)).rejects.toThrow('Email already in use');
+      await expect(service.update(1, dto)).rejects.toThrow(
+        'Email already in use',
+      );
     });
   });
 });
@@ -2083,7 +2109,9 @@ describe('UsersController (Integration)', () => {
       expect(response.body.password).toBeUndefined(); // Should not expose password
 
       // Verify database
-      const user = await userRepository.findOne({ where: { email: dto.email } });
+      const user = await userRepository.findOne({
+        where: { email: dto.email },
+      });
       expect(user).toBeDefined();
       expect(user.password).not.toBe(dto.password); // Should be hashed
     });
@@ -2109,10 +2137,7 @@ describe('UsersController (Integration)', () => {
       };
 
       // Create first user
-      await request(app.getHttpServer())
-        .post('/users')
-        .send(dto)
-        .expect(201);
+      await request(app.getHttpServer()).post('/users').send(dto).expect(201);
 
       // Attempt to create duplicate
       const response = await request(app.getHttpServer())
@@ -2155,15 +2180,11 @@ describe('UsersController (Integration)', () => {
     });
 
     it('should return 404 for non-existent user', async () => {
-      await request(app.getHttpServer())
-        .get('/users/999')
-        .expect(404);
+      await request(app.getHttpServer()).get('/users/999').expect(404);
     });
 
     it('should return 401 without authentication', async () => {
-      await request(app.getHttpServer())
-        .get('/users/1')
-        .expect(401);
+      await request(app.getHttpServer()).get('/users/1').expect(401);
     });
   });
 });
@@ -2345,32 +2366,38 @@ export class UserService {
 // queues/email.queue.ts
 @Injectable()
 export class EmailQueue {
-  constructor(
-    @InjectQueue('email') private emailQueue: Queue,
-  ) {}
+  constructor(@InjectQueue('email') private emailQueue: Queue) {}
 
   async sendWelcomeEmail(email: string, name: string): Promise<void> {
-    await this.emailQueue.add('welcome', {
-      email,
-      name,
-    }, {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000,
+    await this.emailQueue.add(
+      'welcome',
+      {
+        email,
+        name,
       },
-      removeOnComplete: true,
-    });
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+      },
+    );
   }
 
   async sendPasswordReset(email: string, token: string): Promise<void> {
-    await this.emailQueue.add('password-reset', {
-      email,
-      token,
-    }, {
-      priority: 1, // High priority
-      attempts: 5,
-    });
+    await this.emailQueue.add(
+      'password-reset',
+      {
+        email,
+        token,
+      },
+      {
+        priority: 1, // High priority
+        attempts: 5,
+      },
+    );
   }
 }
 
@@ -2457,8 +2484,12 @@ export class CustomRateLimitGuard implements CanActivate {
       return true;
     }
 
-    if (current >= 10) { // Max 10 requests per minute
-      throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    if (current >= 10) {
+      // Max 10 requests per minute
+      throw new HttpException(
+        'Rate limit exceeded',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     await this.cacheManager.set(key, current + 1, 60);
@@ -2572,7 +2603,8 @@ export class HealthController {
     return this.health.check([
       () => this.db.pingCheck('database'),
       () => this.redis.pingCheck('redis'),
-      () => this.disk.checkStorage('storage', { path: '/', thresholdPercent: 0.9 }),
+      () =>
+        this.disk.checkStorage('storage', { path: '/', thresholdPercent: 0.9 }),
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
     ]);
   }
@@ -2588,9 +2620,7 @@ export class HealthController {
   @HealthCheck()
   async readiness() {
     // Check if app is ready to accept traffic
-    return this.health.check([
-      () => this.db.pingCheck('database'),
-    ]);
+    return this.health.check([() => this.db.pingCheck('database')]);
   }
 }
 ```
@@ -2619,9 +2649,11 @@ export class LoggerService implements LoggerService {
     });
 
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.add(new winston.transports.Console({
-        format: winston.format.simple(),
-      }));
+      this.logger.add(
+        new winston.transports.Console({
+          format: winston.format.simple(),
+        }),
+      );
     }
   }
 
@@ -2740,7 +2772,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - NODE_ENV=production
       - DB_HOST=postgres
@@ -2759,12 +2791,12 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - '5432:5432'
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
 
 volumes:
   postgres-data:
@@ -2775,15 +2807,18 @@ volumes:
 ## Additional Resources
 
 ### Official Documentation
+
 - [NestJS Documentation](https://docs.nestjs.com/)
 - [TypeORM Documentation](https://typeorm.io/)
 - [Prisma Documentation](https://www.prisma.io/docs/)
 
 ### Community Resources
+
 - [NestJS Discord](https://discord.gg/nestjs)
 - [Awesome NestJS](https://github.com/juliandavidmr/awesome-nestjs)
 
 ### Best Practices
+
 - Follow the principle of single responsibility
 - Use dependency injection for loose coupling
 - Write comprehensive tests (≥80% coverage)
@@ -2797,6 +2832,6 @@ volumes:
 
 ---
 
-*For quick reference patterns, see [SKILL.md](./SKILL.md)*
-*For code templates, see [templates/](./templates/)*
-*For real-world examples, see [examples/](./examples/)*
+_For quick reference patterns, see [SKILL.md](./SKILL.md)_
+_For code templates, see [templates/](./templates/)_
+_For real-world examples, see [examples/](./examples/)_

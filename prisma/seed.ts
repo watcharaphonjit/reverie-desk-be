@@ -14,6 +14,80 @@ const DEFAULT_ADMIN = {
   fullName: 'System Admin',
 } as const;
 
+/**
+ * Default permission grants. Role codes that don't appear here get no
+ * reporting/dashboard/audit access. Branch-scoped roles (BRANCH_MANAGER,
+ * etc.) still see only their own branch's data — that's enforced inside
+ * each report service, not here.
+ */
+const ROLE_PERMISSION_GRANTS: Record<RoleCode, string[]> = {
+  ADMIN: [
+    'REPORT_VIEW',
+    'DASHBOARD_VIEW',
+    'AUDIT_VIEW',
+    'NOTIFICATION_VIEW',
+    'NOTIFICATION_MANAGE',
+    'AUTOMATION_MANAGE',
+  ],
+  SUPER_BRANCH_MANAGER: [
+    'REPORT_VIEW',
+    'DASHBOARD_VIEW',
+    'AUDIT_VIEW',
+    'NOTIFICATION_VIEW',
+    'NOTIFICATION_MANAGE',
+    'AUTOMATION_MANAGE',
+  ],
+  BRANCH_MANAGER: [
+    'REPORT_VIEW',
+    'DASHBOARD_VIEW',
+    'AUDIT_VIEW',
+    'NOTIFICATION_VIEW',
+    'NOTIFICATION_MANAGE',
+  ],
+  CS: ['REPORT_VIEW', 'DASHBOARD_VIEW', 'NOTIFICATION_VIEW'],
+  TELESALES: ['DASHBOARD_VIEW', 'NOTIFICATION_VIEW'],
+  DOCTOR: ['DASHBOARD_VIEW', 'NOTIFICATION_VIEW'],
+  EMPLOYEE: ['NOTIFICATION_VIEW'],
+  CENTRAL_STOCK_HUB: ['REPORT_VIEW', 'NOTIFICATION_VIEW'],
+};
+
+const PERMISSION_DEFINITIONS: Array<{
+  code: string;
+  name: string;
+  description: string;
+}> = [
+  {
+    code: 'REPORT_VIEW',
+    name: 'View Reports',
+    description: 'Read-only access to /reports/* aggregation endpoints',
+  },
+  {
+    code: 'DASHBOARD_VIEW',
+    name: 'View Dashboards',
+    description: 'Access /dashboard/* card endpoints',
+  },
+  {
+    code: 'AUDIT_VIEW',
+    name: 'View Audit Logs',
+    description: 'Query the audit_logs trail',
+  },
+  {
+    code: 'NOTIFICATION_VIEW',
+    name: 'View Notifications',
+    description: 'List and read own notifications',
+  },
+  {
+    code: 'NOTIFICATION_MANAGE',
+    name: 'Manage Notifications',
+    description: 'Create / broadcast notifications outside automation',
+  },
+  {
+    code: 'AUTOMATION_MANAGE',
+    name: 'Manage Automation',
+    description: 'List, run manually, and enable/disable automation rules',
+  },
+];
+
 async function main() {
   const mainBranch = await prisma.branch.upsert({
     where: { code: 'HQ' },
@@ -31,6 +105,8 @@ async function main() {
     })),
     skipDuplicates: true,
   });
+
+  await seedPermissions();
 
   await prisma.salesChannel.createMany({
     data: Object.values(SalesChannelCode).map((code) => ({
@@ -94,6 +170,35 @@ async function seedDefaultAdmin(branchId: string): Promise<void> {
   });
 
   console.log(`✅ Default admin created (${DEFAULT_ADMIN.email})`);
+}
+
+async function seedPermissions(): Promise<void> {
+  await prisma.permission.createMany({
+    data: PERMISSION_DEFINITIONS,
+    skipDuplicates: true,
+  });
+
+  const permissions = await prisma.permission.findMany({
+    select: { id: true, code: true },
+  });
+  const permIdByCode = new Map(permissions.map((p) => [p.code, p.id]));
+
+  const roles = await prisma.role.findMany({
+    select: { id: true, code: true },
+  });
+  const grantRows: Array<{ roleId: string; permissionId: string }> = [];
+  for (const role of roles) {
+    for (const code of ROLE_PERMISSION_GRANTS[role.code] ?? []) {
+      const permissionId = permIdByCode.get(code);
+      if (permissionId) grantRows.push({ roleId: role.id, permissionId });
+    }
+  }
+  if (grantRows.length > 0) {
+    await prisma.rolePermission.createMany({
+      data: grantRows,
+      skipDuplicates: true,
+    });
+  }
 }
 
 main()

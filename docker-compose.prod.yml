@@ -1,0 +1,62 @@
+# Production overlay. Use with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from the dev compose:
+#  - No bundled Postgres/Redis: production should use a managed DB and a
+#    managed Redis (or a dedicated Redis instance with persistence).
+#  - The api/worker images are pulled from the registry instead of built
+#    locally. Pin the tag at deploy time via IMAGE_TAG.
+#  - Resource limits + log driver tuned for prod.
+#  - .env supplies every secret and tuned threshold; nothing is inlined.
+
+services:
+  postgres:
+    deploy:
+      replicas: 0   # disable embedded postgres in prod overlay
+
+  redis:
+    deploy:
+      replicas: 0   # disable embedded redis in prod overlay
+
+  api:
+    image: ${IMAGE_REPO:-reverie-desk}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on: []
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1g
+        reservations:
+          cpus: '0.25'
+          memory: 256m
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+    command:
+      - sh
+      - -c
+      - 'npx prisma migrate deploy && node dist/src/main.js'
+
+  worker:
+    image: ${IMAGE_REPO:-reverie-desk}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on: []
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+    command: ['node', 'dist/src/worker.js']

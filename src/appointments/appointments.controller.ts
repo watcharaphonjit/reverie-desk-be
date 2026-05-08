@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -25,6 +26,8 @@ import {
   RescheduleAppointmentDto,
 } from './dto/reschedule-appointment.dto';
 
+@ApiTags('appointments')
+@ApiBearerAuth('bearer')
 @Controller('appointments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'CS', 'DOCTOR')

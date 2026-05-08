@@ -8,19 +8,28 @@ import {
   AuditAction,
   Payment,
   PaymentStatus,
+  PaymentType,
   Prisma,
   SalesOrderStatus,
+  WalletReferenceType,
+  WalletTransactionType,
+  WalletType,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import {
   assertBranchAccess,
   isUnrestricted,
 } from '../common/authz/branch-scope';
+import { CommissionsService } from '../commissions/commissions.service';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TreatmentEntitlementsService } from '../treatment-entitlements/treatment-entitlements.service';
+import { WalletService } from '../wallet/wallet.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentQueryDto } from './dto/payment-query.dto';
+import { NotificationType } from '@prisma/client';
 
 const PAYMENT_INCLUDE = {
   salesOrder: {
@@ -52,6 +61,10 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly wallet: WalletService,
+    private readonly commissions: CommissionsService,
+    private readonly notifications: NotificationsService,
+    private readonly entitlements: TreatmentEntitlementsService,
   ) {}
 
   // ───────────────────────── create ─────────────────────────
@@ -64,6 +77,8 @@ export class PaymentsService {
       select: {
         id: true,
         branchId: true,
+        customerId: true,
+        createdByUserId: true,
         status: true,
         totalAmount: true,
         depositRequired: true,
@@ -94,8 +109,15 @@ export class PaymentsService {
       order.depositSatisfiedAt === null &&
       depositRequired > 0 &&
       newPaidSum >= depositRequired;
+    // Entitlements are minted exactly once per order — at the first
+    // transition into status=PAID. Subsequent payments (or refunds that
+    // re-pay) won't re-mint because the next time the engine runs
+    // `order.status` is already PAID, so this guard is false.
+    const shouldMintEntitlements =
+      order.status !== SalesOrderStatus.PAID &&
+      nextStatus === SalesOrderStatus.PAID;
 
-    return this.prisma.$transaction(async (tx) => {
+    const payment = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
 
       // Update the order BEFORE creating the payment so the payment's
@@ -159,8 +181,72 @@ export class PaymentsService {
         });
       }
 
+      // Deposit-type payments (deposit + full+) post a CREDIT to the
+      // customer's DEPOSIT wallet so receipts and ledger views reflect
+      // the cash that came in. This is a strict spec rule: when
+      // `paymentType === DEPOSIT`, write a wallet credit referencing
+      // the payment.
+      if (dto.paymentType === PaymentType.DEPOSIT) {
+        await this.wallet.creditWith(tx, {
+          customerId: order.customerId,
+          walletType: WalletType.DEPOSIT,
+          amount: dto.amount,
+          type: WalletTransactionType.CREDIT,
+          referenceType: WalletReferenceType.PAYMENT,
+          referenceId: payment.id,
+          branchId: order.branchId,
+          note: `Deposit payment for order ${order.id}`,
+          actorUserId: user.id,
+        });
+      }
+
+      // When the deposit threshold is satisfied for the first time, kick
+      // off commission evaluation. The engine is idempotent so repeated
+      // calls (e.g. on later top-up payments) are safe; we still gate on
+      // `shouldStampDeposit` to avoid wasted work on every payment.
+      if (shouldStampDeposit) {
+        await this.commissions.evaluateOrderWith(tx, order.id, user.id);
+      }
+
+      // Mint program entitlements on the first transition to PAID. Runs
+      // inside the same `$transaction` so a failure here rolls back the
+      // payment + order-status update — i.e. we never end up "fully
+      // paid but no entitlements" or vice versa. Idempotent via the
+      // `salesOrderItemId @unique` constraint on TreatmentEntitlement.
+      if (shouldMintEntitlements) {
+        await this.entitlements.createForPaidOrderWith(
+          tx,
+          order.id,
+          user.id,
+        );
+      }
+
       return payment;
     });
+
+    // Post-commit notifications. We fire after the transaction so a
+    // notification failure can never roll back the payment, and so the
+    // dedup key reflects the actual on-disk state.
+    if (shouldStampDeposit) {
+      if (order.createdByUserId) {
+        await this.notifications.notify({
+          userId: order.createdByUserId,
+          branchId: order.branchId,
+          title: `Deposit satisfied — ${payment.salesOrder.orderNo}`,
+          message: `Order ${payment.salesOrder.orderNo} just hit its deposit threshold.`,
+          type: NotificationType.DEPOSIT_PENDING,
+          metadata: {
+            salesOrderId: order.id,
+            paymentId: payment.id,
+            satisfied: true,
+          },
+          dedupeKey: `DEPOSIT_SATISFIED|${order.id}`,
+        });
+      }
+      // Fan-out commission-eligible alerts to recipients (idempotent).
+      await this.commissions.notifyEligibleForOrder(order.id);
+    }
+    return payment;
   }
 
   // ───────────────────────── list ─────────────────────────

@@ -8,6 +8,7 @@ import {
   Appointment,
   AppointmentStatus,
   AuditAction,
+  NotificationType,
   Prisma,
   SalesOrderStatus,
 } from '@prisma/client';
@@ -18,7 +19,9 @@ import {
 } from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TreatmentEntitlementsService } from '../treatment-entitlements/treatment-entitlements.service';
 import { AppointmentQueryDto } from './dto/appointment-query.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
@@ -32,6 +35,21 @@ const APPOINTMENT_INCLUDE = {
   salesOrder: {
     select: { id: true, orderNo: true, status: true, branchId: true },
   },
+  // Spec §"Get Appointment Detail" wants service events on the detail
+  // payload so the front-end can show what was actually performed during
+  // the visit alongside the appointment metadata.
+  serviceEvents: {
+    orderBy: { performedAt: 'asc' },
+    select: {
+      id: true,
+      status: true,
+      performedAt: true,
+      completedAt: true,
+      serviceId: true,
+      doctorUserId: true,
+      employeeUserId: true,
+    },
+  },
 } satisfies Prisma.AppointmentInclude;
 
 type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
@@ -44,14 +62,18 @@ const ORDER_BLOCKED_FOR_BOOKING: ReadonlyArray<SalesOrderStatus> = [
 ];
 
 /**
- * Allowed status transitions per the spec.
- * COMPLETED and CANCELLED are terminal (no outgoing edges).
+ * Allowed status transitions per spec §"Appointment State Validation":
+ *   BOOKED      → CHECKED_IN, CANCELLED
+ *   CHECKED_IN  → COMPLETED            (cancel from CHECKED_IN is forbidden;
+ *                                        the visit started, so unwind via
+ *                                        complete-then-refund instead)
+ *   COMPLETED, CANCELLED, NO_SHOW are terminal.
  */
 const ALLOWED_TRANSITIONS: Readonly<
   Record<AppointmentStatus, ReadonlyArray<AppointmentStatus>>
 > = {
   BOOKED: [AppointmentStatus.CHECKED_IN, AppointmentStatus.CANCELLED],
-  CHECKED_IN: [AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED],
+  CHECKED_IN: [AppointmentStatus.COMPLETED],
   COMPLETED: [],
   CANCELLED: [],
   NO_SHOW: [],
@@ -62,6 +84,8 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
+    private readonly entitlements: TreatmentEntitlementsService,
   ) {}
 
   // ───────────────────────── create / book ─────────────────────────
@@ -102,9 +126,22 @@ export class AppointmentsService {
 
     const scheduledAt = new Date(dto.scheduledAt);
 
-    return this.prisma.$transaction(async (tx) => {
+    const appointment = await this.prisma.$transaction(async (tx) => {
+      // Spec §"Appointment Booking validation": entitlement must belong
+      // to the same customer + service and have remaining (non-expired)
+      // sessions. We validate inside the tx so a concurrent expire/
+      // consume between the read and the appointment write is observed.
+      if (dto.entitlementId) {
+        await this.entitlements.assertBookable(
+          tx,
+          dto.entitlementId,
+          order.customerId,
+          dto.serviceId,
+        );
+      }
+
       const appointmentNo = await generateAppointmentNo(tx, scheduledAt);
-      const appointment = await tx.appointment.create({
+      const created = await tx.appointment.create({
         data: {
           appointmentNo,
           branchId: order.branchId,
@@ -116,28 +153,53 @@ export class AppointmentsService {
           status: AppointmentStatus.BOOKED,
           scheduledAt,
           notes: dto.notes,
+          ...(dto.entitlementId
+            ? { entitlementId: dto.entitlementId }
+            : {}),
         },
         include: APPOINTMENT_INCLUDE,
       });
 
       await this.audit.recordWith(tx, {
         actorUserId: user.id,
-        branchId: appointment.branchId,
+        branchId: created.branchId,
         entityType: 'Appointment',
-        entityId: appointment.id,
+        entityId: created.id,
         action: AuditAction.CREATE,
         payload: {
-          appointmentNo: appointment.appointmentNo,
-          salesOrderId: appointment.salesOrderId,
-          customerId: appointment.customerId,
-          serviceId: appointment.serviceId,
-          doctorUserId: appointment.doctorUserId,
-          scheduledAt: appointment.scheduledAt.toISOString(),
+          appointmentNo: created.appointmentNo,
+          salesOrderId: created.salesOrderId,
+          customerId: created.customerId,
+          serviceId: created.serviceId,
+          doctorUserId: created.doctorUserId,
+          scheduledAt: created.scheduledAt.toISOString(),
+          ...(dto.entitlementId
+            ? { entitlementId: dto.entitlementId }
+            : {}),
         },
       });
 
-      return appointment;
+      return created;
     });
+
+    // Post-commit notification: alert the assigned doctor that they
+    // have a new booking. Idempotent via dedupeKey so re-creating after
+    // a transient retry is a no-op.
+    if (appointment.doctorUserId) {
+      await this.notifications.notify({
+        userId: appointment.doctorUserId,
+        branchId: appointment.branchId,
+        title: `New appointment: ${appointment.appointmentNo}`,
+        message: `You have a new booking for ${appointment.customer.fullName} on ${appointment.scheduledAt.toISOString()}.`,
+        type: NotificationType.APPOINTMENT_REMINDER,
+        metadata: {
+          appointmentId: appointment.id,
+          scheduledAt: appointment.scheduledAt.toISOString(),
+        },
+        dedupeKey: `APPOINTMENT_CREATE|${appointment.id}|${appointment.doctorUserId}`,
+      });
+    }
+    return appointment;
   }
 
   // ───────────────────────── list ─────────────────────────
@@ -196,14 +258,26 @@ export class AppointmentsService {
     });
   }
 
-  complete(
+  async complete(
     user: AuthenticatedUser,
     id: string,
     note?: string,
   ): Promise<AppointmentWithRelations> {
+    // Spec §"Complete Appointment": "service event must exist". The visit is
+    // not legitimately completable until at least one service event has been
+    // recorded — otherwise we'd lose the clinical-execution audit trail.
+    const eventCount = await this.prisma.customerServiceEvent.count({
+      where: { appointmentId: id },
+    });
+    if (eventCount === 0) {
+      throw new BadRequestException(
+        'Cannot complete appointment without a recorded service event',
+      );
+    }
     return this.transition(user, id, AppointmentStatus.COMPLETED, {
       stamp: 'completedAt',
       note,
+      consumeEntitlement: true,
     });
   }
 
@@ -276,7 +350,19 @@ export class AppointmentsService {
     user: AuthenticatedUser,
     id: string,
     next: AppointmentStatus,
-    extra: { stamp?: 'checkedInAt' | 'completedAt'; note?: string; reason?: string },
+    extra: {
+      stamp?: 'checkedInAt' | 'completedAt';
+      note?: string;
+      reason?: string;
+      /**
+       * If true and the appointment carries an `entitlementId`, draw
+       * one session from the entitlement atomically as part of this
+       * transition. Idempotent via `Appointment.entitlementConsumedAt`
+       * — calling /complete after an explicit /consume (or vice versa)
+       * is a safe no-op.
+       */
+      consumeEntitlement?: boolean;
+    },
   ): Promise<AppointmentWithRelations> {
     const existing = await this.findOne(user, id);
     if (!ALLOWED_TRANSITIONS[existing.status].includes(next)) {
@@ -310,6 +396,38 @@ export class AppointmentsService {
           ...(extra.reason ? { reason: extra.reason } : {}),
         },
       });
+
+      // Auto-consume on COMPLETED if an entitlement is linked and this
+      // appointment hasn't already drawn down its session. The helper
+      // throws on exhausted/expired entitlements, which (correctly)
+      // rolls the whole transition back so an over-consume never
+      // commits.
+      if (
+        extra.consumeEntitlement &&
+        updated.entitlementId &&
+        !updated.entitlementConsumedAt
+      ) {
+        const ent = await this.entitlements.tryConsumeAppointmentWith(
+          tx,
+          updated.entitlementId,
+          updated.id,
+        );
+        await this.audit.recordWith(tx, {
+          actorUserId: user.id,
+          branchId: updated.branchId,
+          entityType: 'TreatmentEntitlement',
+          entityId: ent.id,
+          action: AuditAction.UPDATE,
+          payload: {
+            field: 'consumedSessions',
+            appointmentId: updated.id,
+            from: ent.consumedSessions - 1,
+            to: ent.consumedSessions,
+            totalSessions: ent.totalSessions,
+            trigger: 'appointment.complete',
+          },
+        });
+      }
 
       return updated;
     });

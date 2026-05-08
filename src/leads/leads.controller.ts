@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -22,6 +23,8 @@ import { ListLeadsQuery } from './dto/list-leads.query';
 import { UpdateLeadStatusDto } from './dto/update-status.dto';
 import { LeadsService } from './leads.service';
 
+@ApiTags('leads')
+@ApiBearerAuth('bearer')
 @Controller('leads')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LeadsController {

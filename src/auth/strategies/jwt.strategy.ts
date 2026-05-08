@@ -16,6 +16,12 @@ export interface AuthenticatedUser {
   email: string;
   branchId: string | null;
   roles: RoleCode[];
+  /**
+   * Effective permission codes for the user (union across all assigned
+   * roles). Populated lazily on each authenticated request by
+   * {@link JwtStrategy.validate}.
+   */
+  permissions: string[];
 }
 
 @Injectable()
@@ -44,12 +50,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User is not active');
     }
 
-    const roles = await this.usersService.getRoleCodes(user.id);
+    const [roles, permissions] = await Promise.all([
+      this.usersService.getRoleCodes(user.id),
+      this.usersService.getPermissionCodes(user.id),
+    ]);
     return {
       id: user.id,
       email: user.email,
       branchId: user.branchId,
       roles,
+      permissions,
     };
   }
 }

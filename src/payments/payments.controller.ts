@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -16,6 +17,8 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentQueryDto } from './dto/payment-query.dto';
 import { PaymentsService } from './payments.service';
 
+@ApiTags('payments')
+@ApiBearerAuth('bearer')
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'CS', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')

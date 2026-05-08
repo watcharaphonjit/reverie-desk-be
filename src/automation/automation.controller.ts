@@ -1,0 +1,50 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { AutomationService } from './automation.service';
+import { ToggleRuleDto } from './dto/toggle-rule.dto';
+
+@ApiTags('automation')
+@ApiBearerAuth('bearer')
+@Controller('automation')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('AUTOMATION_MANAGE')
+@Throttle({
+  default: {
+    ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+    limit: Number(process.env.THROTTLE_ADMIN_LIMIT ?? 50),
+  },
+})
+export class AutomationController {
+  constructor(private readonly automation: AutomationService) {}
+
+  @Get('rules')
+  list() {
+    return this.automation.list();
+  }
+
+  @Post('run/:code')
+  run(@Param('code') code: string) {
+    return this.automation.run(code.toUpperCase());
+  }
+
+  @Patch('rules/:code')
+  setEnabled(
+    @Param('code') code: string,
+    @Body() dto: ToggleRuleDto,
+  ) {
+    this.automation.setEnabled(code.toUpperCase(), dto.enabled);
+    return { code: code.toUpperCase(), enabled: dto.enabled };
+  }
+}

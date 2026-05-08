@@ -6,20 +6,38 @@ import {
 } from 'class-validator';
 
 export class CreateServiceEventDto {
-  /**
-   * Appointment the service is being performed under. Required: the spec
-   * says appointment must be CHECKED_IN, and customer/service must match
-   * the appointment, so the appointment is the source of truth for those
-   * fields. We re-validate them anyway to fail loudly on mismatches.
-   */
-  @IsString()
-  appointmentId!: string;
-
   @IsString()
   customerId!: string;
 
+  /**
+   * Branch where the service is being performed. Required by the spec.
+   * If `appointmentId` is supplied, this must equal `appointment.branchId`.
+   */
+  @IsString()
+  branchId!: string;
+
   @IsString()
   serviceId!: string;
+
+  /**
+   * Appointment the service is being performed under. Optional — supports
+   * walk-in service events that were not pre-booked. When provided we
+   * additionally validate the appointment is `CHECKED_IN` and that
+   * customer/service/branch match the appointment.
+   */
+  @IsOptional()
+  @IsString()
+  appointmentId?: string;
+
+  /**
+   * Optional sales order this event is being delivered against. Snapshotted
+   * onto the event for billing/traceability. When `appointmentId` is also
+   * present and the appointment links a different sales order, the request
+   * is rejected — they must agree.
+   */
+  @IsOptional()
+  @IsString()
+  salesOrderId?: string;
 
   @IsOptional()
   @IsString()
@@ -29,7 +47,7 @@ export class CreateServiceEventDto {
   @IsString()
   employeeUserId?: string;
 
-  /** Optional override; defaults to `now()` when omitted. */
+  /** Defaults to `now()` when omitted. */
   @IsOptional()
   @IsDateString()
   performedAt?: string;

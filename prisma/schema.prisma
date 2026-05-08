@@ -111,6 +111,19 @@ enum CommissionValueType {
   FIXED
   PERCENTAGE
 }
+ 
+/// Commission grouping for tiered rules. Every Service must declare which
+/// group it belongs to (`Service.commissionGroupCode`); a CommissionRule
+/// targets a (branch, group) pair with a list of tier rows. The set of
+/// supported groups is fixed by ops and bumping it is a schema change.
+enum ServiceGroupCode {
+  RATE_SKIN
+  RATE_HAIR
+  RATE_SURGERY
+  RATE_TRANSPLANT
+  RATE_MEDICINE
+  RATE_SCULPTRA
+}
 
 enum RefundType {
   FULL_REFUND
@@ -232,6 +245,28 @@ enum AuditAction {
   LOGOUT
 }
 
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  PAYMENT_REMINDER
+  DEPOSIT_PENDING
+  LOW_STOCK
+  EXPIRING_STOCK
+  STOCK_TRANSFER
+  REFUND_REQUEST
+  REFUND_APPROVED
+  COMMISSION_ELIGIBLE
+  COMMISSION_PAID
+  WALLET_EXPIRY
+  LEAD_FOLLOWUP
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+}
+
 model Branch {
   id        String       @id @default(cuid())
   code      String       @unique
@@ -255,6 +290,8 @@ model Branch {
   commissionRules    CommissionRule[]       @relation("CommissionRuleBranch")
   auditLogs          AuditLog[]             @relation("AuditLogBranch")
   purchaseReceipts   PurchaseReceipt[]      @relation("PurchaseReceiptBranch")
+  notifications      Notification[]         @relation("NotificationBranch")
+  quarterTargets     BranchQuarterTarget[]  @relation("BranchQuarterTargetBranch")
 
   @@map("branches")
 }
@@ -295,6 +332,8 @@ model User {
   commissionsCreatedBy           Commission[]            @relation("CommissionCreatedBy")
   walletTransactionsCreatedBy    WalletTransaction[]     @relation("WalletTxnCreatedBy")
   auditLogs                      AuditLog[]              @relation("AuditLogActor")
+  notifications                  Notification[]          @relation("NotificationUser")
+  branchQuarterTargetsCreated    BranchQuarterTarget[]   @relation("BranchQuarterTargetCreatedBy")
 
   @@index([branchId, status])
   @@map("users")
@@ -379,6 +418,7 @@ model Customer {
   wallets          Wallet[]               @relation("WalletCustomer")
   refunds          Refund[]               @relation("RefundCustomer")
   branchStockSales BranchStockSale[]      @relation("BranchStockSaleCustomer")
+  entitlements     TreatmentEntitlement[] @relation("TreatmentEntitlementCustomer")
 
   @@index([currentBranchId])
   @@index([fullName])
@@ -436,23 +476,36 @@ model LeadOwnerLog {
 }
 
 model Service {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  name        String
-  description String?
-  basePrice   Decimal?  @db.Decimal(18, 2)
-  isActive    Boolean   @default(true)
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                  String            @id @default(cuid())
+  code                String            @unique
+  name                String
+  description         String?
+  basePrice           Decimal?          @db.Decimal(18, 2)
+  /// Commission group this service belongs to. Nullable so legacy services
+  /// without a group still validate; tier-based commission lookup falls
+  /// through to "no commission" when this is null.
+  commissionGroupCode ServiceGroupCode?
+  /// True for session-based programs (e.g. "Hair Growth Program — 7 sessions").
+  /// When `true`, paying the parent SalesOrder mints a TreatmentEntitlement
+  /// the customer can later draw down via appointments.
+  isProgram           Boolean           @default(false)
+  /// Sessions granted per unit when isProgram=true. Multiplied by item.quantity
+  /// at entitlement-creation time. Required (validated in service code) when
+  /// isProgram=true; otherwise should be null.
+  defaultSessions     Int?
+  isActive            Boolean           @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   salesOrderItems SalesOrderItem[]       @relation("SalesOrderItemService")
   appointments    Appointment[]          @relation("AppointmentService")
   serviceEvents   CustomerServiceEvent[] @relation("ServiceEventService")
   stockUsages     ServiceStockUsage[]    @relation("ServiceStockUsageService")
-  commissionRules CommissionRule[]       @relation("CommissionRuleService")
+  entitlements    TreatmentEntitlement[] @relation("TreatmentEntitlementService")
 
   @@index([name])
+  @@index([commissionGroupCode])
   @@map("services")
 }
 
@@ -508,8 +561,12 @@ model SalesOrderItem {
   snapshotUnitPrice   Decimal  @db.Decimal(18, 2)
   createdAt           DateTime @default(now())
 
-  salesOrder SalesOrder @relation("SalesOrderItemOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
-  service    Service    @relation("SalesOrderItemService", fields: [serviceId], references: [id], onDelete: Restrict)
+  salesOrder           SalesOrder            @relation("SalesOrderItemOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
+  service              Service               @relation("SalesOrderItemService", fields: [serviceId], references: [id], onDelete: Restrict)
+  /// 1:1 — when the item's service is a program, paying the parent order
+  /// mints exactly one entitlement for this line. Enforced by the
+  /// `salesOrderItemId @unique` on TreatmentEntitlement.
+  treatmentEntitlement TreatmentEntitlement? @relation("TreatmentEntitlementSalesOrderItem")
 
   @@index([salesOrderId])
   @@index([serviceId])
@@ -539,21 +596,30 @@ model Payment {
 }
 
 model Appointment {
-  id              String            @id @default(cuid())
-  appointmentNo   String            @unique
-  branchId        String
-  salesOrderId    String
-  customerId      String
-  serviceId       String
-  doctorUserId    String?
-  createdByUserId String
-  status          AppointmentStatus @default(BOOKED)
-  scheduledAt     DateTime
-  checkedInAt     DateTime?
-  completedAt     DateTime?
-  notes           String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                     String            @id @default(cuid())
+  appointmentNo          String            @unique
+  branchId               String
+  salesOrderId           String
+  customerId             String
+  serviceId              String
+  doctorUserId           String?
+  createdByUserId        String
+  status                 AppointmentStatus @default(BOOKED)
+  scheduledAt            DateTime
+  checkedInAt            DateTime?
+  completedAt            DateTime?
+  notes                  String?
+  /// Optional — set when the visit is redeemed against a treatment
+  /// program. Validated at booking time (must match customer + service,
+  /// must have remaining sessions, must not be expired).
+  entitlementId          String?
+  /// Stamped exactly once when this appointment's session has been
+  /// drawn down from the entitlement. Acts as the idempotency key for
+  /// both `complete()` (auto-consume) and the explicit
+  /// `POST /appointments/:id/consume` endpoint.
+  entitlementConsumedAt  DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   branch        Branch                 @relation("AppointmentBranch", fields: [branchId], references: [id], onDelete: Restrict)
   salesOrder    SalesOrder             @relation("AppointmentSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
@@ -561,51 +627,100 @@ model Appointment {
   service       Service                @relation("AppointmentService", fields: [serviceId], references: [id], onDelete: Restrict)
   doctor        User?                  @relation("AppointmentDoctor", fields: [doctorUserId], references: [id], onDelete: SetNull)
   createdBy     User                   @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  entitlement   TreatmentEntitlement?  @relation("TreatmentEntitlementAppointment", fields: [entitlementId], references: [id], onDelete: SetNull)
   serviceEvents CustomerServiceEvent[] @relation("ServiceEventAppointment")
 
   @@index([branchId, scheduledAt])
   @@index([salesOrderId, status])
   @@index([customerId, scheduledAt])
   @@index([doctorUserId, scheduledAt])
+  @@index([entitlementId])
   @@map("appointments")
 }
 
-model CommissionRule {
-  id             String              @id @default(cuid())
-  roleId         String
-  commissionType CommissionType
-  valueType      CommissionValueType
-  value          Decimal             @db.Decimal(18, 4)
-  branchId       String?
-  serviceId      String?
-  minAmount      Decimal?            @db.Decimal(18, 2)
-  maxAmount      Decimal?            @db.Decimal(18, 2)
-  startsAt       DateTime
-  endsAt         DateTime?
-  isActive       Boolean             @default(true)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+/// Session-based program entitlement minted when a SalesOrder containing a
+/// program-line transitions to status=PAID. One row per SalesOrderItem
+/// (`salesOrderItemId @unique` enforces 1:1).
+///
+/// Drawdown: each `Appointment` linked via `entitlementId` may consume one
+/// session, idempotently stamped on `Appointment.entitlementConsumedAt`.
+/// Over-consumption is prevented atomically by a Postgres-side guard
+/// (`UPDATE ... WHERE consumed_sessions < total_sessions`).
+model TreatmentEntitlement {
+  id               String    @id @default(cuid())
+  customerId       String
+  salesOrderItemId String    @unique
+  serviceId        String
+  totalSessions    Int
+  consumedSessions Int       @default(0)
+  activatedAt      DateTime  @default(now())
+  expiredAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  role      Role                 @relation("CommissionRuleRole", fields: [roleId], references: [id], onDelete: Cascade)
+  customer       Customer       @relation("TreatmentEntitlementCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  service        Service        @relation("TreatmentEntitlementService", fields: [serviceId], references: [id], onDelete: Restrict)
+  salesOrderItem SalesOrderItem @relation("TreatmentEntitlementSalesOrderItem", fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]  @relation("TreatmentEntitlementAppointment")
+
+  @@index([customerId])
+  @@index([serviceId])
+  @@index([customerId, serviceId, expiredAt])
+  @@map("treatment_entitlements")
+}
+
+/// A row in this table is a single tier in a commission ladder. A "ladder"
+/// is identified by `(branchId, serviceGroupCode)` and consists of all
+/// rows in that pair sharing the same `commissionType`. Tier selection at
+/// pay-out time picks the row with the largest `minAmount <= orderAmount`.
+///
+/// Legacy fields (`roleId`, `serviceId`, `maxAmount`, `startsAt`, `endsAt`)
+/// remain for backward compat with non-tiered, role-scoped rules — bulk
+/// upsert via the API only writes tier rows and ignores them.
+/// A row in the commission ladder. Always tied to a (branch, serviceGroupCode)
+/// pair plus a `minAmount` threshold; the engine picks the highest-minimum
+/// row whose threshold ≤ the order's group subtotal.
+///
+/// Service-specific rules (legacy `serviceId`) were removed in migration
+/// `20260508_drop_commission_rule_service_id`. All commission selection now
+/// flows through `service.commissionGroupCode` → `commissionRule.serviceGroupCode`.
+model CommissionRule {
+  id               String              @id @default(cuid())
+  roleId           String?
+  commissionType   CommissionType
+  valueType        CommissionValueType
+  value            Decimal             @db.Decimal(18, 4)
+  branchId         String?
+  serviceGroupCode ServiceGroupCode?
+  minAmount        Decimal?            @db.Decimal(18, 2)
+  maxAmount        Decimal?            @db.Decimal(18, 2)
+  startsAt         DateTime            @default(now())
+  endsAt           DateTime?
+  isActive         Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  role      Role?                @relation("CommissionRuleRole", fields: [roleId], references: [id], onDelete: SetNull)
   branch    Branch?              @relation("CommissionRuleBranch", fields: [branchId], references: [id], onDelete: SetNull)
-  service   Service?             @relation("CommissionRuleService", fields: [serviceId], references: [id], onDelete: SetNull)
   snapshots CommissionSnapshot[] @relation("CommissionSnapshotRule")
 
   @@index([roleId, commissionType, startsAt, endsAt])
-  @@index([branchId, serviceId, isActive])
+  @@index([branchId, serviceGroupCode, isActive, minAmount])
   @@map("commission_rules")
 }
 
 model CommissionSnapshot {
   id                           String              @id @default(cuid())
   salesOrderId                 String
-  leadId                       String
+  leadId                       String?
   commissionRuleId             String?
   leadOwnerUserId              String?
   saleCreatorUserId            String
   commissionType               CommissionType
+  serviceGroupCode             ServiceGroupCode?
   ruleValueType                CommissionValueType
   ruleValue                    Decimal             @db.Decimal(18, 4)
+  groupSubtotal                Decimal?            @db.Decimal(18, 2)
   computedAmount               Decimal             @db.Decimal(18, 2)
   eligibilityDepositPaid       Boolean
   eligibilityAppointmentBooked Boolean
@@ -620,13 +735,14 @@ model CommissionSnapshot {
   createdAt                    DateTime            @default(now())
 
   salesOrder      SalesOrder      @relation("CommissionSnapshotSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)
-  lead            Lead            @relation("CommissionSnapshotLead", fields: [leadId], references: [id], onDelete: Restrict)
+  lead            Lead?           @relation("CommissionSnapshotLead", fields: [leadId], references: [id], onDelete: SetNull)
   commissionRule  CommissionRule? @relation("CommissionSnapshotRule", fields: [commissionRuleId], references: [id], onDelete: SetNull)
   leadOwnerUser   User?           @relation("CommissionSnapshotLeadOwner", fields: [leadOwnerUserId], references: [id], onDelete: SetNull)
   saleCreatorUser User            @relation("CommissionSnapshotSaleCreator", fields: [saleCreatorUserId], references: [id], onDelete: Restrict)
   commissions     Commission[]    @relation("CommissionSnapshot")
 
   @@index([salesOrderId, commissionType])
+  @@index([salesOrderId, serviceGroupCode, commissionType])
   @@index([leadOwnerUserId, eligibleAt])
   @@index([saleCreatorUserId, eligibleAt])
   @@index([lockedAt])
@@ -695,7 +811,7 @@ model Refund {
 }
 
 model CustomerServiceEvent {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   customerId     String
   branchId       String
   serviceId      String
@@ -1148,4 +1264,81 @@ model AuditLog {
   @@index([actorUserId, createdAt])
   @@index([branchId, createdAt])
   @@map("audit_logs")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String?
+  branchId  String?
+  title     String
+  message   String
+  type      NotificationType
+  channel   NotificationChannel @default(IN_APP)
+  isRead    Boolean             @default(false)
+  readAt    DateTime?
+  metadata  Json?
+  // Optional dedupe fingerprint enforced via unique index — used by
+  // automation rules to avoid posting the same alert repeatedly. Nullable
+  // so manual / one-off notifications don't have to participate.
+  dedupeKey String?             @unique
+  createdAt DateTime            @default(now())
+
+  user   User?   @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch? @relation("NotificationBranch", fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([branchId, createdAt])
+  @@index([type, createdAt])
+  @@map("notifications")
+}
+
+/// Quarterly revenue target for a single branch. Owned by the branch
+/// management roles (BRANCH_MANAGER for own branch, SUPER_BRANCH_MANAGER
+/// + ADMIN for any branch). The `totalTarget` MUST equal the sum of its
+/// `categories[*].targetAmount` — enforced at the service layer (Prisma
+/// can't express that constraint declaratively).
+///
+/// Progress is computed on-demand by `TargetProgressService` and is
+/// never persisted: actuals come from `SalesOrder.status = COMPLETED &&
+/// completedAt ∈ quarter` rolled up by `service.commissionGroupCode`.
+model BranchQuarterTarget {
+  id              String   @id @default(cuid())
+  branchId        String
+  /// Calendar year (e.g. 2026). Validated `>= 2020 && <= 2100` at the DTO layer.
+  year            Int
+  /// Quarter number 1..4. Validated at the DTO layer.
+  quarter         Int
+  totalTarget     Decimal  @db.Decimal(18, 2)
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  branch     Branch                        @relation("BranchQuarterTargetBranch", fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy  User                          @relation("BranchQuarterTargetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  categories BranchQuarterTargetCategory[] @relation("BranchQuarterTargetCategoryParent")
+
+  @@unique([branchId, year, quarter])
+  @@index([branchId, year])
+  @@map("branch_quarter_targets")
+}
+
+/// One row per (target, commissionGroup). Sum of `targetAmount` across
+/// all rows for a given target MUST equal the parent's `totalTarget`
+/// (validated in `TargetsService`). Cascade-deletes with the parent so
+/// recreating a target doesn't leak orphan rows.
+model BranchQuarterTargetCategory {
+  id              String           @id @default(cuid())
+  targetId        String
+  /// Re-uses the existing `ServiceGroupCode` enum so the same six groups
+  /// are referenced by `Service.commissionGroupCode`,
+  /// `CommissionRule.serviceGroupCode`, and target categories. Avoids a
+  /// parallel-enum drift problem.
+  commissionGroup ServiceGroupCode
+  targetAmount    Decimal          @db.Decimal(18, 2)
+
+  target BranchQuarterTarget @relation("BranchQuarterTargetCategoryParent", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, commissionGroup])
+  @@index([commissionGroup])
+  @@map("branch_quarter_target_categories")
 }

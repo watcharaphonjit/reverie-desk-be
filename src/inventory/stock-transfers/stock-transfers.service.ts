@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  NotificationType,
   Prisma,
+  RoleCode,
   StockLotStatus,
   StockMovementType,
   StockTransfer,
@@ -15,6 +17,7 @@ import {
 import { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { AuditService } from '../../common/services/audit.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CancelStockTransferDto } from './dto/cancel-stock-transfer.dto';
 import { CreateStockTransferDto } from './dto/create-stock-transfer.dto';
@@ -83,6 +86,7 @@ export class StockTransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ───────────────────────── CREATE (DRAFT) ─────────────────────────
@@ -394,7 +398,7 @@ export class StockTransfersService {
     id: string,
     dto: ReceiveStockTransferDto,
   ): Promise<StockTransferWithRelations> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id },
         include: {
@@ -508,6 +512,48 @@ export class StockTransfersService {
         include: TRANSFER_INCLUDE,
       });
     });
+
+    // Post-commit alert to receiving branch managers (and central
+    // stock hub for cross-branch transfers). Idempotent via dedupeKey.
+    if (result.toBranchId) {
+      const recipients = await this.findStockManagers(result.toBranchId);
+      if (recipients.length > 0) {
+        await this.notifications.notifyMany(recipients, {
+          title: `Stock transfer received: ${result.transferNo}`,
+          message: `${result.items.length} item(s) received at ${result.toWarehouse?.code ?? 'destination'}.`,
+          type: NotificationType.STOCK_TRANSFER,
+          branchId: result.toBranchId,
+          metadata: {
+            stockTransferId: result.id,
+            transferNo: result.transferNo,
+            toWarehouseId: result.toWarehouseId,
+          },
+          dedupeKeyPrefix: `STOCK_TRANSFER_RECEIVED|${result.id}`,
+        });
+      }
+    }
+    return result;
+  }
+
+  private async findStockManagers(branchId: string): Promise<string[]> {
+    const rows = await this.prisma.userRole.findMany({
+      where: {
+        role: {
+          code: {
+            in: [
+              RoleCode.BRANCH_MANAGER,
+              RoleCode.SUPER_BRANCH_MANAGER,
+              RoleCode.ADMIN,
+              RoleCode.CENTRAL_STOCK_HUB,
+            ],
+          },
+        },
+        OR: [{ branchId }, { branchId: null }],
+        user: { status: 'ACTIVE' },
+      },
+      select: { userId: true },
+    });
+    return Array.from(new Set(rows.map((r) => r.userId)));
   }
 
   // ───────────────────────── CANCEL ─────────────────────────

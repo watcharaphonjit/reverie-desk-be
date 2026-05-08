@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,6 +25,8 @@ import { ServiceEventsService } from './service-events.service';
 const READ_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'DOCTOR', 'CS'] as const;
 const WRITE_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'DOCTOR'] as const;
 
+@ApiTags('service-events')
+@ApiBearerAuth('bearer')
 @Controller('service-events')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...READ_ROLES)
@@ -68,6 +71,21 @@ export class ServiceEventsController {
   @HttpCode(HttpStatus.OK)
   @Roles(...WRITE_ROLES)
   consumeStock(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ConsumeStockDto,
+  ) {
+    return this.serviceEvents.consumeStock(user, id, dto);
+  }
+
+  // Spec §"Record Stock Usage" calls the path `/stock-usage`. Same handler;
+  // we keep `/consume-stock` so existing callers and smoke tests continue
+  // to work. Body shape is identical (`quantity` is the primary-unit qty,
+  // matching `quantityPrimaryUsed` in the spec).
+  @Post(':id/stock-usage')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...WRITE_ROLES)
+  recordStockUsage(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: ConsumeStockDto,
