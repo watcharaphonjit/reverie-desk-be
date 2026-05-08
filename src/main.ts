@@ -118,7 +118,7 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  await app.listen(appCfg.port);
+  await app.listen(appCfg.port || 3000);
   logger.log(
     `Reverie Desk API listening on :${appCfg.port} [${appCfg.env}]  →  /api/v1  •  /api/docs  •  /health`,
   );

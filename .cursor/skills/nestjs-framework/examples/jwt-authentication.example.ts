@@ -263,10 +263,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(
-    @Body() dto: LoginDto,
-    @Request() req,
-  ): Promise<AuthResponseDto> {
+  async login(@Body() dto: LoginDto, @Request() req): Promise<AuthResponseDto> {
     return this.authService.login(req.user);
   }
 
@@ -352,7 +349,7 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    const hasRole = requiredRoles.some(role => user.role === role);
+    const hasRole = requiredRoles.some((role) => user.role === role);
 
     if (!hasRole) {
       throw new ForbiddenException(
@@ -368,7 +365,11 @@ export class RolesGuard implements CanActivate {
 // 6. DECORATORS
 // ============================================================================
 
-import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  SetMetadata,
+} from '@nestjs/common';
 
 // Get current user from request
 export const CurrentUser = createParamDecorator(
