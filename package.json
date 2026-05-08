@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "npx nest build",
     "openapi:bundle": "npx -y @redocly/cli bundle ../render-reverie-deck/openapi.yaml -o openapi/bundled.yaml",
     "openapi:generate": "npx -y @openapitools/openapi-generator-cli generate -i openapi/bundled.yaml -g typescript-nestjs -o src/generated/nest-server",
     "openapi:generate:docker": "docker run --rm -v \"${PWD}:/local\" openapitools/openapi-generator-cli generate -i /local/openapi/bundled.yaml -g typescript-nestjs -o /local/src/generated/nest-server",
