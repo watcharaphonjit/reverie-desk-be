@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  Appointment,
   AppointmentStatus,
   AuditAction,
   NotificationType,

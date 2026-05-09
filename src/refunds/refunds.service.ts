@@ -19,7 +19,7 @@ import {
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import {
   assertBranchAccess,
-  isUnrestricted,
+  scopedBranchFilter,
 } from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
@@ -203,19 +203,26 @@ export class RefundsService {
     user: AuthenticatedUser,
     query: RefundQueryDto,
   ): Promise<PaginatedResult<RefundWithRelations>> {
+    // Build the salesOrder relation filter explicitly so its branchId
+    // constraint is the AND of (a) any caller-provided branchId filter and
+    // (b) the caller's own branch when they're branch-scoped. Building the
+    // relation filter as an explicit object avoids spreading a Prisma
+    // relation-filter union (`SalesOrderWhereInput | SalesOrderRelationFilter`),
+    // which trips TS narrowing on reassignment.
+    const ownBranchScope = scopedBranchFilter(user); // string | undefined
+    const salesOrderFilter: Prisma.SalesOrderWhereInput = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(ownBranchScope ? { branchId: ownBranchScope } : {}),
+    };
     const where: Prisma.RefundWhereInput = {
       ...(query.salesOrderId ? { salesOrderId: query.salesOrderId } : {}),
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.refundType ? { refundType: query.refundType } : {}),
-      ...(query.branchId ? { salesOrder: { branchId: query.branchId } } : {}),
+      ...(Object.keys(salesOrderFilter).length > 0
+        ? { salesOrder: salesOrderFilter }
+        : {}),
     };
-    if (!isUnrestricted(user)) {
-      where.salesOrder = {
-        ...where.salesOrder,
-        branchId: user.branchId ?? '__none__',
-      };
-    }
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
