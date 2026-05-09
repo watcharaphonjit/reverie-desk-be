@@ -37,7 +37,11 @@ export class UnitsService {
         entityType: 'Unit',
         entityId: unit.id,
         action: AuditAction.CREATE,
-        payload: { code: unit.code, label: unit.label, isActive: unit.isActive },
+        payload: {
+          code: unit.code,
+          label: unit.label,
+          isActive: unit.isActive,
+        },
       });
       return unit;
     });
@@ -125,7 +129,12 @@ export class UnitsService {
         entityType: 'Unit',
         entityId: updated.id,
         action: AuditAction.UPDATE,
-        payload: { field: 'isActive', from: true, to: false, softDisabled: true },
+        payload: {
+          field: 'isActive',
+          from: true,
+          to: false,
+          softDisabled: true,
+        },
       });
       return updated;
     });

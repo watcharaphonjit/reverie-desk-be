@@ -92,10 +92,7 @@ export class TreatmentEntitlementsService {
     return rows.map(toView);
   }
 
-  async findOne(
-    user: AuthenticatedUser,
-    id: string,
-  ): Promise<EntitlementView> {
+  async findOne(user: AuthenticatedUser, id: string): Promise<EntitlementView> {
     const row = await this.loadOrThrow(id);
     // Defer branch-scope to the entitlement's customer's current branch.
     const customer = await this.prisma.customer.findUnique({

@@ -22,8 +22,19 @@ import { CreateServiceEventDto } from './dto/create-service-event.dto';
 import { ServiceEventQueryDto } from './dto/service-event-query.dto';
 import { ServiceEventsService } from './service-events.service';
 
-const READ_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'DOCTOR', 'CS'] as const;
-const WRITE_ROLES = ['ADMIN', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER', 'DOCTOR'] as const;
+const READ_ROLES = [
+  'ADMIN',
+  'BRANCH_MANAGER',
+  'SUPER_BRANCH_MANAGER',
+  'DOCTOR',
+  'CS',
+] as const;
+const WRITE_ROLES = [
+  'ADMIN',
+  'BRANCH_MANAGER',
+  'SUPER_BRANCH_MANAGER',
+  'DOCTOR',
+] as const;
 
 @ApiTags('service-events')
 @ApiBearerAuth('bearer')
@@ -60,10 +71,7 @@ export class ServiceEventsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.serviceEvents.findOne(user, id);
   }
 

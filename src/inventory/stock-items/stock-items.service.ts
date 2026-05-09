@@ -81,7 +81,9 @@ export class StockItemsService {
     const where: Prisma.StockItemWhereInput = {
       deletedAt: null,
       ...(query.type ? { type: query.type } : {}),
-      ...(query.isSellable !== undefined ? { isSellable: query.isSellable } : {}),
+      ...(query.isSellable !== undefined
+        ? { isSellable: query.isSellable }
+        : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
       ...(query.search
         ? {
@@ -166,7 +168,9 @@ export class StockItemsService {
           ...(dto.consumptionStrategy !== undefined
             ? { consumptionStrategy: dto.consumptionStrategy }
             : {}),
-          ...(dto.isSellable !== undefined ? { isSellable: dto.isSellable } : {}),
+          ...(dto.isSellable !== undefined
+            ? { isSellable: dto.isSellable }
+            : {}),
           ...(dto.trackLot !== undefined ? { trackLot: dto.trackLot } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         },
@@ -265,7 +269,8 @@ export class StockItemsService {
     conversionFactor: number | null | undefined,
   ): void {
     const hasSecondary = !!secondaryUnitId;
-    const hasFactor = conversionFactor !== null && conversionFactor !== undefined;
+    const hasFactor =
+      conversionFactor !== null && conversionFactor !== undefined;
 
     if (hasSecondary && !hasFactor) {
       throw new BadRequestException(

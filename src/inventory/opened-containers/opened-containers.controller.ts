@@ -48,10 +48,7 @@ export class OpenedContainersController {
 
   @Post()
   @Roles(...WRITE_ROLES)
-  open(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: OpenContainerDto,
-  ) {
+  open(@CurrentUser() user: AuthenticatedUser, @Body() dto: OpenContainerDto) {
     return this.containers.open(user, dto);
   }
 

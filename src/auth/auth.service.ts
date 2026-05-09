@@ -21,8 +21,12 @@ export class AuthService {
       throw new UnauthorizedException('User is not active');
     }
 
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatches) throw new UnauthorizedException('Invalid credentials');
+    const passwordMatches = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
+    if (!passwordMatches)
+      throw new UnauthorizedException('Invalid credentials');
 
     const roles = await this.usersService.getRoleCodes(user.id);
 

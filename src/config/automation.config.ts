@@ -25,10 +25,7 @@ export class AutomationConfigService {
       config.get('LOW_STOCK_THRESHOLD'),
       5,
     );
-    this.expiryAlertDays = parsePositive(
-      config.get('EXPIRY_ALERT_DAYS'),
-      30,
-    );
+    this.expiryAlertDays = parsePositive(config.get('EXPIRY_ALERT_DAYS'), 30);
     this.leadFollowupHours = parsePositive(
       config.get('LEAD_FOLLOWUP_HOURS'),
       48,

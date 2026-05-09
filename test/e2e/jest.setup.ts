@@ -6,8 +6,7 @@
 jest.setTimeout(60_000);
 
 if (!process.env.DEBUG_E2E) {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   global.console.log = () => {};
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+
   global.console.info = () => {};
 }

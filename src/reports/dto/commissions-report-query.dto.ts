@@ -6,7 +6,11 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { CommissionStatus, CommissionType, ServiceGroupCode } from '@prisma/client';
+import {
+  CommissionStatus,
+  CommissionType,
+  ServiceGroupCode,
+} from '@prisma/client';
 
 export const COMMISSION_GROUP_BY = ['user', 'branch', 'group'] as const;
 export type CommissionGroupBy = (typeof COMMISSION_GROUP_BY)[number];

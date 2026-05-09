@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  AppointmentStatus,
-  NotificationType,
-  Prisma,
-} from '@prisma/client';
+import { AppointmentStatus, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationConfigService } from '../automation.config';
@@ -74,7 +70,7 @@ export class AppointmentReminderRule implements AutomationRule {
           metadata: {
             appointmentId: a.id,
             scheduledAt: a.scheduledAt.toISOString(),
-          } as Prisma.InputJsonValue,
+          },
           dedupeKeyPrefix: `APPOINTMENT_REMINDER|${a.id}|${dayBucket}`,
         },
       );

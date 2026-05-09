@@ -55,16 +55,17 @@ describe('quarterRangeUTC', () => {
 describe('assertCategorySumMatchesTotal', () => {
   it('accepts an exact sum (3M + 1M + 1M = 5M)', () => {
     expect(() =>
-      assertCategorySumMatchesTotal(5_000_000, [3_000_000, 1_000_000, 1_000_000]),
+      assertCategorySumMatchesTotal(
+        5_000_000,
+        [3_000_000, 1_000_000, 1_000_000],
+      ),
     ).not.toThrow();
   });
 
   it('accepts within ±0.01 (IEEE-754 float drift slack)', () => {
     // 0.1 + 0.2 = 0.30000000000000004 in JS doubles. The helper must
     // tolerate this so reasonable sums don't get spuriously rejected.
-    expect(() =>
-      assertCategorySumMatchesTotal(0.3, [0.1, 0.2]),
-    ).not.toThrow();
+    expect(() => assertCategorySumMatchesTotal(0.3, [0.1, 0.2])).not.toThrow();
   });
 
   it('rejects when sum is short by more than a cent', () => {
@@ -75,7 +76,10 @@ describe('assertCategorySumMatchesTotal', () => {
 
   it('rejects when sum overshoots by more than a cent', () => {
     expect(() =>
-      assertCategorySumMatchesTotal(5_000_000, [3_000_000, 1_000_000, 1_000_002]),
+      assertCategorySumMatchesTotal(
+        5_000_000,
+        [3_000_000, 1_000_000, 1_000_002],
+      ),
     ).toThrow(/does not equal totalTarget/);
   });
 
@@ -140,9 +144,18 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 5_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 3_000_000 },
-          { commissionGroup: ServiceGroupCode.RATE_SKIN, targetAmount: 1_000_000 },
-          { commissionGroup: ServiceGroupCode.RATE_SURGERY, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 3_000_000,
+          },
+          {
+            commissionGroup: ServiceGroupCode.RATE_SKIN,
+            targetAmount: 1_000_000,
+          },
+          {
+            commissionGroup: ServiceGroupCode.RATE_SURGERY,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [
@@ -184,7 +197,10 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 1_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [
@@ -203,7 +219,10 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 1_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [],
@@ -220,7 +239,10 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 1_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [
@@ -246,9 +268,18 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 3_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_SURGERY, targetAmount: 1_000_000 },
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 1_000_000 },
-          { commissionGroup: ServiceGroupCode.RATE_SKIN, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_SURGERY,
+            targetAmount: 1_000_000,
+          },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 1_000_000,
+          },
+          {
+            commissionGroup: ServiceGroupCode.RATE_SKIN,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [],
@@ -269,7 +300,10 @@ describe('assembleQuarterProgress', () => {
       target: {
         totalTarget: 1_000_000,
         categories: [
-          { commissionGroup: ServiceGroupCode.RATE_HAIR, targetAmount: 1_000_000 },
+          {
+            commissionGroup: ServiceGroupCode.RATE_HAIR,
+            targetAmount: 1_000_000,
+          },
         ],
       },
       actualsByGroup: [

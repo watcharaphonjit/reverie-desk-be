@@ -48,10 +48,7 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @RequirePermission('NOTIFICATION_VIEW')
-  markRead(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  markRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.notifications.markRead(user, id);
   }
 

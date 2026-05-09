@@ -67,9 +67,9 @@ export class ServiceEventsService {
     // straight from the request). We resolve a single canonical {branchId,
     // customerId, serviceId, salesOrderId, appointmentId?} tuple here and
     // run all downstream guards against it.
-    let resolvedBranchId = dto.branchId;
-    let resolvedCustomerId = dto.customerId;
-    let resolvedServiceId = dto.serviceId;
+    const resolvedBranchId = dto.branchId;
+    const resolvedCustomerId = dto.customerId;
+    const resolvedServiceId = dto.serviceId;
     let resolvedSalesOrderId: string | null = dto.salesOrderId ?? null;
     let resolvedAppointmentId: string | null = null;
 
@@ -108,10 +108,7 @@ export class ServiceEventsService {
           'branchId does not match the appointment branch',
         );
       }
-      if (
-        dto.salesOrderId &&
-        dto.salesOrderId !== appointment.salesOrderId
-      ) {
+      if (dto.salesOrderId && dto.salesOrderId !== appointment.salesOrderId) {
         throw new BadRequestException(
           'salesOrderId does not match the appointment sales order',
         );
@@ -163,11 +160,14 @@ export class ServiceEventsService {
       }
     }
 
-    if (dto.doctorUserId) await this.assertUserActive(dto.doctorUserId, 'Doctor');
+    if (dto.doctorUserId)
+      await this.assertUserActive(dto.doctorUserId, 'Doctor');
     if (dto.employeeUserId)
       await this.assertUserActive(dto.employeeUserId, 'Employee');
 
-    const performedAt = dto.performedAt ? new Date(dto.performedAt) : new Date();
+    const performedAt = dto.performedAt
+      ? new Date(dto.performedAt)
+      : new Date();
 
     return this.prisma.$transaction(async (tx) => {
       const event = await tx.customerServiceEvent.create({
@@ -220,9 +220,7 @@ export class ServiceEventsService {
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.serviceId ? { serviceId: query.serviceId } : {}),
       ...(query.doctorUserId ? { doctorUserId: query.doctorUserId } : {}),
-      ...(query.employeeUserId
-        ? { employeeUserId: query.employeeUserId }
-        : {}),
+      ...(query.employeeUserId ? { employeeUserId: query.employeeUserId } : {}),
       ...(query.appointmentId ? { appointmentId: query.appointmentId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...this.dateRangeFilter(query.from, query.to),
@@ -312,7 +310,8 @@ export class ServiceEventsService {
       // intact. Callers may still attribute usage to a container by passing
       // `openedContainerId`, but that goes through a separate code path.
       if (
-        lot.stockItem.consumptionStrategy === ConsumptionStrategy.PARTIAL_REQUIRED &&
+        lot.stockItem.consumptionStrategy ===
+          ConsumptionStrategy.PARTIAL_REQUIRED &&
         !dto.openedContainerId
       ) {
         throw new BadRequestException(
@@ -492,10 +491,7 @@ export class ServiceEventsService {
     });
   }
 
-  private async assertUserActive(
-    userId: string,
-    label: string,
-  ): Promise<void> {
+  private async assertUserActive(userId: string, label: string): Promise<void> {
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, status: true },
@@ -534,9 +530,7 @@ export class ServiceEventsService {
 
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
 
-const decToNum = (
-  v: Prisma.Decimal | number | null | undefined,
-): number => {
+const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
   if (v == null) return 0;
   return typeof v === 'number' ? v : Number(v.toString());
 };

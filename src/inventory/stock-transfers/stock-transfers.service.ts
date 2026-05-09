@@ -264,7 +264,6 @@ export class StockTransfersService {
       if (!transfer) throw new NotFoundException('Stock transfer not found');
       this.assertTransition(transfer.status, StockTransferStatus.IN_TRANSIT);
 
-      const itemMap = new Map(transfer.items.map((it) => [it.id, it]));
       const dispatchByItemId = new Map(dto.items.map((d) => [d.itemId, d]));
 
       // Every transfer item must be addressed in the dispatch payload — even
@@ -663,7 +662,7 @@ export class StockTransfersService {
           ...(auditExtra &&
           typeof auditExtra === 'object' &&
           !Array.isArray(auditExtra)
-            ? (auditExtra as Record<string, Prisma.InputJsonValue>)
+            ? auditExtra
             : {}),
         },
       });

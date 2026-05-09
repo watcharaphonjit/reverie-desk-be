@@ -250,7 +250,10 @@ export class CustomerService {
     }
   }
 
-  private diffPayload(before: Customer, after: Customer): Prisma.InputJsonValue {
+  private diffPayload(
+    before: Customer,
+    after: Customer,
+  ): Prisma.InputJsonValue {
     const diff: Record<string, Prisma.InputJsonValue> = {};
     const fields: (keyof Customer)[] = [
       'fullName',
@@ -264,8 +267,8 @@ export class CustomerService {
       const a = after[f];
       if (b !== a) {
         diff[f] = {
-          from: b == null ? null : (b as string),
-          to: a == null ? null : (a as string),
+          from: b == null ? null : b,
+          to: a == null ? null : a,
         };
       }
     }

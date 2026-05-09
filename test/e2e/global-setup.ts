@@ -10,7 +10,7 @@
  * Migration / seed are handled by the workflow before this runs (or the
  * developer locally) — keeping that out of jest avoids long startup.
  */
-export default async function globalSetup(): Promise<void> {
+export default function globalSetup(): Promise<void> {
   if (!process.env.DATABASE_URL) {
     throw new Error(
       'DATABASE_URL must be set for e2e tests (use a dedicated test DB)',

@@ -208,13 +208,11 @@ export class RefundsService {
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.refundType ? { refundType: query.refundType } : {}),
-      ...(query.branchId
-        ? { salesOrder: { branchId: query.branchId } }
-        : {}),
+      ...(query.branchId ? { salesOrder: { branchId: query.branchId } } : {}),
     };
     if (!isUnrestricted(user)) {
       where.salesOrder = {
-        ...(where.salesOrder as Prisma.SalesOrderWhereInput | undefined),
+        ...where.salesOrder,
         branchId: user.branchId ?? '__none__',
       };
     }
@@ -481,9 +479,7 @@ export class RefundsService {
  * Uses a per-day Postgres advisory lock so concurrent refund creations
  * don't collide on the unique `refundNo` index.
  */
-async function generateRefundNo(
-  tx: Prisma.TransactionClient,
-): Promise<string> {
+async function generateRefundNo(tx: Prisma.TransactionClient): Promise<string> {
   const now = new Date();
   const yyyymmdd =
     `${now.getUTCFullYear()}` +

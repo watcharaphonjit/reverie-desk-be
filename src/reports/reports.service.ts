@@ -190,47 +190,53 @@ export class ReportsService {
     const where: Prisma.CustomerServiceEventWhereInput = {
       ...(query.serviceId ? { serviceId: query.serviceId } : {}),
       ...(query.doctorUserId ? { doctorUserId: query.doctorUserId } : {}),
-      ...(query.employeeUserId
-        ? { employeeUserId: query.employeeUserId }
-        : {}),
+      ...(query.employeeUserId ? { employeeUserId: query.employeeUserId } : {}),
       ...this.dateRangeFilter(query.startDate, query.endDate, 'performedAt'),
       ...this.scopedBranchClause(user, query.branchId, 'branchId'),
     };
 
-    const [totals, byStatus, byDoctor, byEmployee, byService, distinctCustomers] =
-      await Promise.all([
-        this.prisma.customerServiceEvent.count({ where }),
-        this.prisma.customerServiceEvent.groupBy({
-          by: ['status'],
-          where,
-          _count: { _all: true },
-        }),
-        this.prisma.customerServiceEvent.groupBy({
-          by: ['doctorUserId'],
-          where: { ...where, doctorUserId: { not: null } },
-          _count: { _all: true },
-        }),
-        this.prisma.customerServiceEvent.groupBy({
-          by: ['employeeUserId'],
-          where: { ...where, employeeUserId: { not: null } },
-          _count: { _all: true },
-        }),
-        this.prisma.customerServiceEvent.groupBy({
-          by: ['serviceId'],
-          where,
-          _count: { _all: true },
-        }),
-        this.prisma.customerServiceEvent.findMany({
-          where,
-          distinct: ['customerId'],
-          select: { customerId: true },
-        }),
-      ]);
+    const [
+      totals,
+      byStatus,
+      byDoctor,
+      byEmployee,
+      byService,
+      distinctCustomers,
+    ] = await Promise.all([
+      this.prisma.customerServiceEvent.count({ where }),
+      this.prisma.customerServiceEvent.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.customerServiceEvent.groupBy({
+        by: ['doctorUserId'],
+        where: { ...where, doctorUserId: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.customerServiceEvent.groupBy({
+        by: ['employeeUserId'],
+        where: { ...where, employeeUserId: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.customerServiceEvent.groupBy({
+        by: ['serviceId'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.customerServiceEvent.findMany({
+        where,
+        distinct: ['customerId'],
+        select: { customerId: true },
+      }),
+    ]);
 
     // Hydrate user/service display names so the UI doesn't need a second
     // round trip.
     const [doctorNames, employeeNames, serviceNames] = await Promise.all([
-      this.namesForUsers(byDoctor.map((r) => r.doctorUserId).filter(Boolean) as string[]),
+      this.namesForUsers(
+        byDoctor.map((r) => r.doctorUserId).filter(Boolean) as string[],
+      ),
       this.namesForUsers(
         byEmployee.map((r) => r.employeeUserId).filter(Boolean) as string[],
       ),
@@ -364,18 +370,17 @@ export class ReportsService {
     for (const row of breakdown) {
       const key =
         groupBy === 'doctor'
-          ? (row as { doctorUserId: string | null }).doctorUserId ?? 'unassigned'
+          ? ((row as { doctorUserId: string | null }).doctorUserId ??
+            'unassigned')
           : (row as { branchId: string }).branchId;
-      const bucket =
-        buckets.get(key) ??
-        {
-          key,
-          booked: 0,
-          checkedIn: 0,
-          completed: 0,
-          cancelled: 0,
-          noShow: 0,
-        };
+      const bucket = buckets.get(key) ?? {
+        key,
+        booked: 0,
+        checkedIn: 0,
+        completed: 0,
+        cancelled: 0,
+        noShow: 0,
+      };
       const c = row._count._all;
       switch (row.status) {
         case AppointmentStatus.BOOKED:
@@ -397,7 +402,8 @@ export class ReportsService {
       buckets.set(key, bucket);
     }
     const breakdownRows = Array.from(buckets.values()).map((b) => {
-      const total = b.booked + b.checkedIn + b.completed + b.cancelled + b.noShow;
+      const total =
+        b.booked + b.checkedIn + b.completed + b.cancelled + b.noShow;
       return {
         ...b,
         total,
@@ -409,7 +415,9 @@ export class ReportsService {
     const namesById =
       groupBy === 'doctor'
         ? await this.namesForUsers(
-            breakdownRows.filter((r) => r.key !== 'unassigned').map((r) => r.key),
+            breakdownRows
+              .filter((r) => r.key !== 'unassigned')
+              .map((r) => r.key),
           )
         : await this.namesForBranches(breakdownRows.map((r) => r.key));
 
@@ -421,7 +429,9 @@ export class ReportsService {
       },
       groupBy,
       breakdown: breakdownRows.map((r) => ({
-        ...(groupBy === 'doctor' ? { doctorUserId: r.key } : { branchId: r.key }),
+        ...(groupBy === 'doctor'
+          ? { doctorUserId: r.key }
+          : { branchId: r.key }),
         name: namesById.get(r.key) ?? null,
         booked: r.booked,
         checkedIn: r.checkedIn,
@@ -464,18 +474,20 @@ export class ReportsService {
       this.prisma.stockMovement.count({ where }),
     ]);
 
-    const totals: Record<StockMovementType, { count: number; quantity: number }> =
-      {
-        PURCHASE_IN: { count: 0, quantity: 0 },
-        TRANSFER_IN: { count: 0, quantity: 0 },
-        TRANSFER_OUT: { count: 0, quantity: 0 },
-        CLINICAL_USAGE: { count: 0, quantity: 0 },
-        RETAIL_SALE: { count: 0, quantity: 0 },
-        ADJUSTMENT: { count: 0, quantity: 0 },
-        RETURN: { count: 0, quantity: 0 },
-        EXPIRE: { count: 0, quantity: 0 },
-        DISCARD: { count: 0, quantity: 0 },
-      };
+    const totals: Record<
+      StockMovementType,
+      { count: number; quantity: number }
+    > = {
+      PURCHASE_IN: { count: 0, quantity: 0 },
+      TRANSFER_IN: { count: 0, quantity: 0 },
+      TRANSFER_OUT: { count: 0, quantity: 0 },
+      CLINICAL_USAGE: { count: 0, quantity: 0 },
+      RETAIL_SALE: { count: 0, quantity: 0 },
+      ADJUSTMENT: { count: 0, quantity: 0 },
+      RETURN: { count: 0, quantity: 0 },
+      EXPIRE: { count: 0, quantity: 0 },
+      DISCARD: { count: 0, quantity: 0 },
+    };
     for (const row of byType) {
       totals[row.type] = {
         count: row._count._all,
@@ -518,10 +530,7 @@ export class ReportsService {
 
   // ────────────────────────── F. Commissions ──────────────────────────
 
-  async commissions(
-    user: AuthenticatedUser,
-    query: CommissionsReportQueryDto,
-  ) {
+  async commissions(user: AuthenticatedUser, query: CommissionsReportQueryDto) {
     const where: Prisma.CommissionWhereInput = {
       ...(query.recipientUserId
         ? { recipientUserId: query.recipientUserId }
@@ -532,9 +541,7 @@ export class ReportsService {
       ...(query.serviceGroupCode
         ? { snapshot: { serviceGroupCode: query.serviceGroupCode } }
         : {}),
-      ...(query.branchId
-        ? { salesOrder: { branchId: query.branchId } }
-        : {}),
+      ...(query.branchId ? { salesOrder: { branchId: query.branchId } } : {}),
     };
 
     // Branch scoping for restricted users — push branchId onto the joined
@@ -578,14 +585,16 @@ export class ReportsService {
       }),
     ]);
 
-    const statusCounts: Record<CommissionStatus, { count: number; amount: number }> =
-      {
-        PENDING: { count: 0, amount: 0 },
-        ELIGIBLE: { count: 0, amount: 0 },
-        LOCKED: { count: 0, amount: 0 },
-        PAID: { count: 0, amount: 0 },
-        REVOKED: { count: 0, amount: 0 },
-      };
+    const statusCounts: Record<
+      CommissionStatus,
+      { count: number; amount: number }
+    > = {
+      PENDING: { count: 0, amount: 0 },
+      ELIGIBLE: { count: 0, amount: 0 },
+      LOCKED: { count: 0, amount: 0 },
+      PAID: { count: 0, amount: 0 },
+      REVOKED: { count: 0, amount: 0 },
+    };
     for (const r of byStatus) {
       statusCounts[r.status] = {
         count: r._count._all,
@@ -778,9 +787,7 @@ export class ReportsService {
     const status = (where.status as string | undefined) ?? null;
     const createdByUserId =
       (where.createdByUserId as string | undefined) ?? null;
-    const createdAt = where.createdAt as
-      | { gte?: Date; lt?: Date }
-      | undefined;
+    const createdAt = where.createdAt as { gte?: Date; lt?: Date } | undefined;
     const startDate = createdAt?.gte ?? null;
     const endDate = createdAt?.lt ?? null;
 
@@ -870,7 +877,7 @@ export class ReportsService {
       'branchId',
     );
     if (Object.keys(branchClause).length === 0) return {};
-    return { salesOrder: branchClause as Prisma.SalesOrderWhereInput };
+    return { salesOrder: branchClause };
   }
 
   private scopedRefundSalesOrderFilter(
@@ -883,7 +890,7 @@ export class ReportsService {
       'branchId',
     );
     if (Object.keys(branchClause).length === 0) return {};
-    return { salesOrder: branchClause as Prisma.SalesOrderWhereInput };
+    return { salesOrder: branchClause };
   }
 
   private scopedWarehouseFilter(
@@ -904,9 +911,7 @@ export class ReportsService {
 
   // ─────────────── name lookups ───────────────
 
-  private async namesForUsers(
-    ids: string[],
-  ): Promise<Map<string, string>> {
+  private async namesForUsers(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.user.findMany({
       where: { id: { in: Array.from(new Set(ids)) } },
@@ -915,9 +920,7 @@ export class ReportsService {
     return new Map(rows.map((r) => [r.id, r.fullName]));
   }
 
-  private async namesForBranches(
-    ids: string[],
-  ): Promise<Map<string, string>> {
+  private async namesForBranches(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.branch.findMany({
       where: { id: { in: Array.from(new Set(ids)) } },
@@ -926,9 +929,7 @@ export class ReportsService {
     return new Map(rows.map((r) => [r.id, r.name]));
   }
 
-  private async namesForServices(
-    ids: string[],
-  ): Promise<Map<string, string>> {
+  private async namesForServices(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.service.findMany({
       where: { id: { in: Array.from(new Set(ids)) } },

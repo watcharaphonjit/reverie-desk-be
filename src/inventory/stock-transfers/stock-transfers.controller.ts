@@ -44,7 +44,11 @@ const WRITE_ROLES = [
  * Approve is intentionally tighter — branch managers can request, but
  * approving a cross-branch movement should sit with management/central stock.
  */
-const APPROVE_ROLES = ['ADMIN', 'SUPER_BRANCH_MANAGER', 'CENTRAL_STOCK_HUB'] as const;
+const APPROVE_ROLES = [
+  'ADMIN',
+  'SUPER_BRANCH_MANAGER',
+  'CENTRAL_STOCK_HUB',
+] as const;
 
 @ApiTags('inventory-stock-transfers')
 @ApiBearerAuth('bearer')
@@ -75,19 +79,13 @@ export class StockTransfersController {
 
   @Patch(':id/request')
   @Roles(...WRITE_ROLES)
-  request(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  request(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.transfers.request(user, id);
   }
 
   @Patch(':id/approve')
   @Roles(...APPROVE_ROLES)
-  approve(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  approve(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.transfers.approve(user, id);
   }
 

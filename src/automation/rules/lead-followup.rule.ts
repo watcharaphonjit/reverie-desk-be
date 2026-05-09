@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LeadStatus, NotificationType, Prisma } from '@prisma/client';
+import { LeadStatus, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationConfigService } from '../automation.config';
@@ -70,7 +70,7 @@ export class LeadFollowupRule implements AutomationRule {
         metadata: {
           leadId: lead.id,
           ageHours: ageHrs,
-        } as Prisma.InputJsonValue,
+        },
         dedupeKey: `LEAD_FOLLOWUP|${lead.id}|${lead.currentOwnerUserId}|${today}`,
       });
       if (result.created) created++;

@@ -31,7 +31,9 @@ const SAFE_USER_SELECT = {
   updatedAt: true,
 } satisfies Prisma.UserSelect;
 
-export type SafeUser = Prisma.UserGetPayload<{ select: typeof SAFE_USER_SELECT }>;
+export type SafeUser = Prisma.UserGetPayload<{
+  select: typeof SAFE_USER_SELECT;
+}>;
 
 @Injectable()
 export class UsersService {

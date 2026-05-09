@@ -9,7 +9,10 @@ import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { assertBranchAccess } from '../common/authz/branch-scope';
 import { AuditService } from '../common/services/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateQuarterTargetDto, QuarterTargetCategoryDto } from './dto/create-quarter-target.dto';
+import {
+  CreateQuarterTargetDto,
+  QuarterTargetCategoryDto,
+} from './dto/create-quarter-target.dto';
 import { UpdateQuarterTargetDto } from './dto/update-quarter-target.dto';
 import { assertCategorySumMatchesTotal } from './quarter.util';
 
@@ -180,7 +183,9 @@ export class TargetsService {
     // they agree. The matrix lives here once so the three branches
     // ({total only, categories only, both}) are obvious.
     const newTotal =
-      dto.totalTarget !== undefined ? dto.totalTarget : Number(existing.totalTarget.toString());
+      dto.totalTarget !== undefined
+        ? dto.totalTarget
+        : Number(existing.totalTarget.toString());
     const newCategoryAmounts: Array<{
       commissionGroup: ServiceGroupCode;
       targetAmount: number;

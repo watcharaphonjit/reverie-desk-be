@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationType, Prisma, WalletTransactionType } from '@prisma/client';
+import {
+  NotificationType,
+  Prisma,
+  WalletTransactionType,
+} from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationConfigService } from '../automation.config';
@@ -22,8 +26,7 @@ import {
 @Injectable()
 export class WalletExpiryRule implements AutomationRule {
   readonly code = 'WALLET_EXPIRY';
-  readonly description =
-    'Daily — flags wallet credits about to expire.';
+  readonly description = 'Daily — flags wallet credits about to expire.';
   readonly schedule = '0 9 * * *';
 
   private readonly logger = new Logger(WalletExpiryRule.name);
@@ -74,16 +77,14 @@ export class WalletExpiryRule implements AutomationRule {
 
     for (const t of txns) {
       const meta = t.metadata as Record<string, unknown> | null;
-      const raw = meta && typeof meta.expiresAt === 'string'
-        ? meta.expiresAt
-        : null;
+      const raw =
+        meta && typeof meta.expiresAt === 'string' ? meta.expiresAt : null;
       if (!raw) continue;
       const exp = new Date(raw);
       if (Number.isNaN(exp.getTime())) continue;
       if (exp < now || exp > cutoff) continue;
 
-      const branchId =
-        t.branchId ?? t.wallet.customer.currentBranchId ?? null;
+      const branchId = t.branchId ?? t.wallet.customer.currentBranchId ?? null;
       const recipients = branchId
         ? await this.recipients.branchManagers(branchId)
         : [];
@@ -100,7 +101,7 @@ export class WalletExpiryRule implements AutomationRule {
           walletId: t.walletId,
           customerId: t.wallet.customerId,
           expiresAt: exp.toISOString(),
-        } as Prisma.InputJsonValue,
+        },
         dedupeKeyPrefix: `WALLET_EXPIRY|${t.id}|${exp
           .toISOString()
           .slice(0, 10)}`,

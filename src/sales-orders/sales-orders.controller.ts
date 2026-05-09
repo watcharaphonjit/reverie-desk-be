@@ -50,10 +50,7 @@ export class SalesOrdersController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.salesOrders.findOne(user, id);
   }
 

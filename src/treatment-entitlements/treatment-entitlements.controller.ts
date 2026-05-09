@@ -36,9 +36,7 @@ import { TreatmentEntitlementsService } from './treatment-entitlements.service';
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TreatmentEntitlementsController {
-  constructor(
-    private readonly entitlements: TreatmentEntitlementsService,
-  ) {}
+  constructor(private readonly entitlements: TreatmentEntitlementsService) {}
 
   @Get('customers/:id/entitlements')
   @Roles('ADMIN', 'SUPER_BRANCH_MANAGER', 'BRANCH_MANAGER', 'CS', 'DOCTOR')
@@ -56,10 +54,7 @@ export class TreatmentEntitlementsController {
   @Get('entitlements/:id')
   @Roles('ADMIN', 'SUPER_BRANCH_MANAGER', 'BRANCH_MANAGER', 'CS', 'DOCTOR')
   @ApiOperation({ summary: 'Fetch a single entitlement by id.' })
-  findOne(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.entitlements.findOne(user, id);
   }
 

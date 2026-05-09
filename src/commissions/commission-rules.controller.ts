@@ -82,10 +82,7 @@ export class CommissionRulesController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Deactivate a tier rule (soft delete)' })
-  remove(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.rules.softDelete(user, id);
   }
 
@@ -107,7 +104,9 @@ export class CommissionRulesController {
    */
   @Post('calculate')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Preview commission for a sales order (no persistence)' })
+  @ApiOperation({
+    summary: 'Preview commission for a sales order (no persistence)',
+  })
   calculate(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CalculateCommissionDto,

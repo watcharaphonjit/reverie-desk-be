@@ -20,7 +20,9 @@ describe('Health (e2e)', () => {
   });
 
   it('GET /health/live returns 200 with {success,data:{status:"ok"}}', async () => {
-    const res = await request(app.getHttpServer()).get('/health/live').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/health/live')
+      .expect(200);
     expect(res.body).toMatchObject({
       success: true,
       data: { status: 'ok' },
@@ -28,7 +30,9 @@ describe('Health (e2e)', () => {
   });
 
   it('GET /health/ready returns 200 and reports each indicator', async () => {
-    const res = await request(app.getHttpServer()).get('/health/ready').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.status).toBe('ok');
     expect(res.body.data.details).toHaveProperty('database');

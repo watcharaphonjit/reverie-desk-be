@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { INestApplicationContext, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Worker } from 'bullmq';
@@ -66,13 +67,18 @@ export function startWorkers(app: INestApplicationContext): Worker[] {
 
   const reportWorker = new Worker<ReportingJobData>(
     QUEUE_NAMES.reporting,
-    async (job) => {
+    // BullMQ's Processor type is `(job) => Promise<R>`. The stub has no
+    // awaited work yet, so we return `Promise.resolve()` rather than
+    // marking the arrow `async` (which would trip the `require-await`
+    // lint). When real work lands here, switch to `async` + await.
+    (job) => {
       // Stub for report precomputation. The real implementation will pull
       // from ReportsService and warm the cache; for now we just log so the
       // queue surface is wired end-to-end.
       logger.log(
         `reporting:${job.data.reportType} (cacheKey=${job.data.cacheKey ?? 'none'})`,
       );
+      return Promise.resolve();
     },
     {
       connection: conn,
@@ -86,9 +92,7 @@ export function startWorkers(app: INestApplicationContext): Worker[] {
         `Worker job ${job?.queueName}.${job?.name} failed: ${err.message}`,
       ),
     );
-    w.on('error', (err) =>
-      logger.error(`Worker error: ${err.message}`),
-    );
+    w.on('error', (err) => logger.error(`Worker error: ${err.message}`));
   }
 
   logger.log('BullMQ workers started: notification, automation, reporting');

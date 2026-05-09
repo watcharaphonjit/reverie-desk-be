@@ -28,7 +28,11 @@ const READ_ROLES = [
   'CS',
   'DOCTOR',
 ] as const;
-const WRITE_ROLES = ['ADMIN', 'SUPER_BRANCH_MANAGER', 'CENTRAL_STOCK_HUB'] as const;
+const WRITE_ROLES = [
+  'ADMIN',
+  'SUPER_BRANCH_MANAGER',
+  'CENTRAL_STOCK_HUB',
+] as const;
 
 @ApiTags('inventory-stock-lots')
 @ApiBearerAuth('bearer')

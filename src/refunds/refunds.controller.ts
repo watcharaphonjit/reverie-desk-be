@@ -48,18 +48,12 @@ export class RefundsController {
 
   @Post()
   @Roles(...WRITE_ROLES)
-  create(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateRefundDto,
-  ) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRefundDto) {
     return this.refunds.create(user, dto);
   }
 
   @Get()
-  list(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query() query: RefundQueryDto,
-  ) {
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: RefundQueryDto) {
     return this.refunds.findAll(user, query);
   }
 

@@ -34,9 +34,9 @@ describe('checkEntitlementGuards (booking & consume)', () => {
   });
 
   it('rejects when the entitlement is for a different service', () => {
-    expect(
-      checkEntitlementGuards(baseEnt, CUST, 'svc_acne_program', NOW),
-    ).toBe('WRONG_SERVICE');
+    expect(checkEntitlementGuards(baseEnt, CUST, 'svc_acne_program', NOW)).toBe(
+      'WRONG_SERVICE',
+    );
   });
 
   it('rejects an expired entitlement (expiredAt strictly in the past)', () => {
@@ -49,9 +49,7 @@ describe('checkEntitlementGuards (booking & consume)', () => {
 
   it('treats expiredAt === now as expired (boundary)', () => {
     const justExpired = { ...baseEnt, expiredAt: NOW };
-    expect(checkEntitlementGuards(justExpired, CUST, SVC, NOW)).toBe(
-      'EXPIRED',
-    );
+    expect(checkEntitlementGuards(justExpired, CUST, SVC, NOW)).toBe('EXPIRED');
   });
 
   it('accepts an entitlement whose expiredAt is in the future', () => {
@@ -69,9 +67,7 @@ describe('checkEntitlementGuards (booking & consume)', () => {
 
   it('rejects when consumed equals total (exhausted)', () => {
     const exhausted = { ...baseEnt, consumedSessions: 7, totalSessions: 7 };
-    expect(checkEntitlementGuards(exhausted, CUST, SVC, NOW)).toBe(
-      'EXHAUSTED',
-    );
+    expect(checkEntitlementGuards(exhausted, CUST, SVC, NOW)).toBe('EXHAUSTED');
   });
 
   it('rejects when consumed somehow exceeds total (defensive)', () => {
@@ -80,9 +76,9 @@ describe('checkEntitlementGuards (booking & consume)', () => {
   });
 
   it('reports WRONG_CUSTOMER before WRONG_SERVICE when both differ', () => {
-    expect(
-      checkEntitlementGuards(baseEnt, 'cust_bob', 'svc_other', NOW),
-    ).toBe('WRONG_CUSTOMER');
+    expect(checkEntitlementGuards(baseEnt, 'cust_bob', 'svc_other', NOW)).toBe(
+      'WRONG_CUSTOMER',
+    );
   });
 
   it('reports WRONG_SERVICE before EXPIRED when service mismatches an expired ent', () => {
@@ -90,9 +86,9 @@ describe('checkEntitlementGuards (booking & consume)', () => {
       ...baseEnt,
       expiredAt: new Date('2026-01-01T00:00:00Z'),
     };
-    expect(
-      checkEntitlementGuards(expiredOther, CUST, 'svc_other', NOW),
-    ).toBe('WRONG_SERVICE');
+    expect(checkEntitlementGuards(expiredOther, CUST, 'svc_other', NOW)).toBe(
+      'WRONG_SERVICE',
+    );
   });
 
   it('reports EXPIRED before EXHAUSTED when both apply', () => {

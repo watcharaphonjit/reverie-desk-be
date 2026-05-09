@@ -139,7 +139,12 @@ export class OpenedContainersService {
 
       const lockedLot = await tx.stockLot.findUnique({
         where: { id: lot.id },
-        select: { id: true, status: true, quantityOnHand: true, warehouseId: true },
+        select: {
+          id: true,
+          status: true,
+          quantityOnHand: true,
+          warehouseId: true,
+        },
       });
       if (!lockedLot) throw new BadRequestException('Stock lot disappeared');
       if (lockedLot.status !== StockLotStatus.ACTIVE) {
@@ -492,9 +497,7 @@ export class OpenedContainersService {
 // ─────────────────────── module-private utils ───────────────────────
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
 
-const decToNum = (
-  v: Prisma.Decimal | number | null | undefined,
-): number => {
+const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
   return Number(v.toString());

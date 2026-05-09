@@ -32,10 +32,7 @@ export class LeadsController {
 
   @Post()
   @Roles('ADMIN', 'TELESALES', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
-  create(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateLeadDto,
-  ) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateLeadDto) {
     return this.leadsService.create(user, dto);
   }
 
@@ -64,13 +61,7 @@ export class LeadsController {
   }
 
   @Patch(':id/status')
-  @Roles(
-    'ADMIN',
-    'TELESALES',
-    'CS',
-    'BRANCH_MANAGER',
-    'SUPER_BRANCH_MANAGER',
-  )
+  @Roles('ADMIN', 'TELESALES', 'CS', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
   updateStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

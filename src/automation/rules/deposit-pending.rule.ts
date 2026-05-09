@@ -71,10 +71,7 @@ export class DepositPendingRule implements AutomationRule {
     const today = isoDate(new Date());
 
     for (const order of candidates) {
-      const paid = order.payments.reduce(
-        (s, p) => s + decToNum(p.amount),
-        0,
-      );
+      const paid = order.payments.reduce((s, p) => s + decToNum(p.amount), 0);
       const owed = decToNum(order.depositRequired) - paid;
       if (owed <= 0) continue;
 
@@ -94,7 +91,7 @@ export class DepositPendingRule implements AutomationRule {
             salesOrderId: order.id,
             orderNo: order.orderNo,
             owed,
-          } as Prisma.InputJsonValue,
+          },
           dedupeKeyPrefix: `DEPOSIT_PENDING|${order.id}|${today}`,
         },
       );

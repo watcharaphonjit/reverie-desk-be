@@ -153,9 +153,7 @@ export class AppointmentsService {
           status: AppointmentStatus.BOOKED,
           scheduledAt,
           notes: dto.notes,
-          ...(dto.entitlementId
-            ? { entitlementId: dto.entitlementId }
-            : {}),
+          ...(dto.entitlementId ? { entitlementId: dto.entitlementId } : {}),
         },
         include: APPOINTMENT_INCLUDE,
       });
@@ -173,9 +171,7 @@ export class AppointmentsService {
           serviceId: created.serviceId,
           doctorUserId: created.doctorUserId,
           scheduledAt: created.scheduledAt.toISOString(),
-          ...(dto.entitlementId
-            ? { entitlementId: dto.entitlementId }
-            : {}),
+          ...(dto.entitlementId ? { entitlementId: dto.entitlementId } : {}),
         },
       });
 

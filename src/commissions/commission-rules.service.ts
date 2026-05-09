@@ -19,7 +19,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CalculateCommissionDto } from './dto/calculate-commission.dto';
 import {
   BulkUpsertCommissionRulesDto,
-  CommissionGroupBundleDto,
   CommissionTierDto,
 } from './dto/bulk-upsert-commission-rules.dto';
 import { CreateCommissionRuleDto } from './dto/create-commission-rule.dto';
@@ -116,7 +115,11 @@ export class CommissionRulesService {
   async bulkUpsert(
     user: AuthenticatedUser,
     dto: BulkUpsertCommissionRulesDto,
-  ): Promise<{ bundlesUpdated: number; tiersWritten: number; rules: RuleWithRelations[] }> {
+  ): Promise<{
+    bundlesUpdated: number;
+    tiersWritten: number;
+    rules: RuleWithRelations[];
+  }> {
     // Pre-flight validation so we fail before opening the tx.
     for (const [idx, bundle] of dto.bundles.entries()) {
       assertTiersValid(bundle.tiers, idx);
@@ -254,10 +257,7 @@ export class CommissionRulesService {
     user: AuthenticatedUser,
     dto: CreateCommissionRuleDto,
   ): Promise<RuleWithRelations> {
-    if (
-      dto.valueType === CommissionValueType.PERCENTAGE &&
-      dto.value > 1
-    ) {
+    if (dto.valueType === CommissionValueType.PERCENTAGE && dto.value > 1) {
       throw new BadRequestException('PERCENTAGE value must be ≤ 1 (e.g. 0.05)');
     }
     if (dto.value < 0) {
@@ -392,13 +392,17 @@ export class CommissionRulesService {
       const updated = await tx.commissionRule.update({
         where: { id },
         data: {
-          ...(dto.value !== undefined ? { value: new Prisma.Decimal(dto.value) } : {}),
+          ...(dto.value !== undefined
+            ? { value: new Prisma.Decimal(dto.value) }
+            : {}),
           ...(dto.valueType !== undefined ? { valueType: dto.valueType } : {}),
           ...(dto.minimumAmount !== undefined
             ? { minAmount: new Prisma.Decimal(dto.minimumAmount) }
             : {}),
           ...(dto.roleId !== undefined ? { roleId: dto.roleId } : {}),
-          ...(dto.startsAt !== undefined ? { startsAt: new Date(dto.startsAt) } : {}),
+          ...(dto.startsAt !== undefined
+            ? { startsAt: new Date(dto.startsAt) }
+            : {}),
           ...(dto.endsAt !== undefined
             ? { endsAt: dto.endsAt === null ? null : new Date(dto.endsAt) }
             : {}),
@@ -581,10 +585,7 @@ export class CommissionRulesService {
  *   - rate ≥ 0
  *   - PERCENTAGE rate ≤ 1
  */
-function assertTiersValid(
-  tiers: CommissionTierDto[],
-  bundleIdx: number,
-): void {
+function assertTiersValid(tiers: CommissionTierDto[], bundleIdx: number): void {
   const minimums = new Set<number>();
   let prevMin = -Infinity;
   for (const [tierIdx, tier] of tiers.entries()) {
@@ -592,10 +593,7 @@ function assertTiersValid(
     if (tier.rate < 0) {
       throw new BadRequestException(`${path}: rate must be ≥ 0`);
     }
-    if (
-      tier.type === CommissionValueType.PERCENTAGE &&
-      tier.rate > 1
-    ) {
+    if (tier.type === CommissionValueType.PERCENTAGE && tier.rate > 1) {
       throw new BadRequestException(
         `${path}: PERCENTAGE rate must be ≤ 1 (got ${tier.rate})`,
       );

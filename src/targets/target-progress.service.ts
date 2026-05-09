@@ -65,10 +65,7 @@ export class TargetProgressService {
     });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    const { start: rangeStart, end: rangeEnd } = quarterRangeUTC(
-      year,
-      quarter,
-    );
+    const { start: rangeStart, end: rangeEnd } = quarterRangeUTC(year, quarter);
 
     // Fetch the target (if set) and the actuals concurrently — the
     // queries are independent and we only ever block on the slower of

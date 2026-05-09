@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
-  Payment,
   PaymentStatus,
   PaymentType,
   Prisma,
@@ -214,11 +213,7 @@ export class PaymentsService {
       // paid but no entitlements" or vice versa. Idempotent via the
       // `salesOrderItemId @unique` constraint on TreatmentEntitlement.
       if (shouldMintEntitlements) {
-        await this.entitlements.createForPaidOrderWith(
-          tx,
-          order.id,
-          user.id,
-        );
+        await this.entitlements.createForPaidOrderWith(tx, order.id, user.id);
       }
 
       return payment;

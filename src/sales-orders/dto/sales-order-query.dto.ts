@@ -1,13 +1,6 @@
 import { SalesOrderStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class SalesOrderQueryDto {
   @IsOptional()

@@ -51,10 +51,7 @@ export class AppointmentsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.appointments.findOne(user, id);
   }
 

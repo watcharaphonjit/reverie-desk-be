@@ -120,7 +120,9 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         const raw = await this.client.get(k);
         return raw === null ? null : (JSON.parse(raw) as T);
       } catch (err) {
-        this.logger.warn(`cache.get failed for ${k}: ${(err as Error).message}`);
+        this.logger.warn(
+          `cache.get failed for ${k}: ${(err as Error).message}`,
+        );
         return null;
       }
     }
@@ -140,13 +142,15 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.client.set(k, payload, 'EX', ttlSeconds);
       } catch (err) {
-        this.logger.warn(`cache.set failed for ${k}: ${(err as Error).message}`);
+        this.logger.warn(
+          `cache.set failed for ${k}: ${(err as Error).message}`,
+        );
       }
       return;
     }
     if (this.memory.size >= this.memoryCap) {
       // crude LRU: drop the oldest insertion. Map preserves insertion order.
-      const oldest = this.memory.keys().next().value as string | undefined;
+      const oldest = this.memory.keys().next().value;
       if (oldest) this.memory.delete(oldest);
     }
     this.memory.set(k, {

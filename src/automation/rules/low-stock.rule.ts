@@ -57,12 +57,22 @@ export class LowStockRule implements AutomationRule {
     // Hydrate names + warehouse → branch.
     const [warehouses, items, hubUsers] = await Promise.all([
       this.prisma.warehouse.findMany({
-        where: { id: { in: Array.from(new Set(lows.map((l) => l.warehouseId))) } },
+        where: {
+          id: { in: Array.from(new Set(lows.map((l) => l.warehouseId))) },
+        },
         select: { id: true, name: true, code: true, branchId: true },
       }),
       this.prisma.stockItem.findMany({
-        where: { id: { in: Array.from(new Set(lows.map((l) => l.stockItemId))) } },
-        select: { id: true, name: true, sku: true, isActive: true, deletedAt: true },
+        where: {
+          id: { in: Array.from(new Set(lows.map((l) => l.stockItemId))) },
+        },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          isActive: true,
+          deletedAt: true,
+        },
       }),
       this.recipients.centralStockHub(),
     ]);
@@ -97,7 +107,7 @@ export class LowStockRule implements AutomationRule {
             stockItemId: item.id,
             onHand: low.onHand,
             threshold: this.config.lowStockThreshold,
-          } as Prisma.InputJsonValue,
+          },
           dedupeKeyPrefix: `LOW_STOCK|${wh.id}|${item.id}|${today}`,
         },
       );

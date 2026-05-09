@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationType, Prisma, RefundStatus } from '@prisma/client';
+import { NotificationType, RefundStatus } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RecipientsService } from '../recipients.service';
@@ -58,7 +58,7 @@ export class RefundApprovalRule implements AutomationRule {
         metadata: {
           refundId: refund.id,
           salesOrderId: refund.salesOrder.id,
-        } as Prisma.InputJsonValue,
+        },
         dedupeKeyPrefix: `REFUND_REQUEST|${refund.id}|${today}`,
       });
       created += result.created;

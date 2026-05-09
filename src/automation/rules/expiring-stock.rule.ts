@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationType, Prisma, StockLotStatus } from '@prisma/client';
+import { NotificationType, StockLotStatus } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationConfigService } from '../automation.config';
@@ -18,8 +18,7 @@ import {
 @Injectable()
 export class ExpiringStockRule implements AutomationRule {
   readonly code = 'EXPIRING_STOCK';
-  readonly description =
-    'Daily — flags lots expiring within the alert window.';
+  readonly description = 'Daily — flags lots expiring within the alert window.';
   readonly schedule = '0 8 * * *';
 
   private readonly logger = new Logger(ExpiringStockRule.name);
@@ -73,9 +72,7 @@ export class ExpiringStockRule implements AutomationRule {
       if (recipients.size === 0) continue;
 
       const days = lot.expiresAt
-        ? Math.ceil(
-            (lot.expiresAt.getTime() - now.getTime()) / 86_400_000,
-          )
+        ? Math.ceil((lot.expiresAt.getTime() - now.getTime()) / 86_400_000)
         : null;
 
       const result = await this.notifications.notifyMany(
@@ -91,7 +88,7 @@ export class ExpiringStockRule implements AutomationRule {
             warehouseId: lot.warehouse.id,
             expiresAt: lot.expiresAt?.toISOString() ?? null,
             daysToExpiry: days,
-          } as Prisma.InputJsonValue,
+          },
           dedupeKeyPrefix: `EXPIRING_STOCK|${lot.id}|${today}`,
         },
       );

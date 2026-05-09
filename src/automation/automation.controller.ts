@@ -40,10 +40,7 @@ export class AutomationController {
   }
 
   @Patch('rules/:code')
-  setEnabled(
-    @Param('code') code: string,
-    @Body() dto: ToggleRuleDto,
-  ) {
+  setEnabled(@Param('code') code: string, @Body() dto: ToggleRuleDto) {
     this.automation.setEnabled(code.toUpperCase(), dto.enabled);
     return { code: code.toUpperCase(), enabled: dto.enabled };
   }

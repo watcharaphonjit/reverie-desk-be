@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -164,8 +163,7 @@ export class CommissionsService {
       tx.appointment.count({ where: { salesOrderId: order.id } }),
       tx.customerServiceEvent.count({ where: { salesOrderId: order.id } }),
     ]);
-    const appointmentBookedOrEvent =
-      appointmentCount > 0 || eventCount > 0;
+    const appointmentBookedOrEvent = appointmentCount > 0 || eventCount > 0;
 
     // Existing snapshots for dedupe: (group, type).
     const existingSnapshots = await tx.commissionSnapshot.findMany({
@@ -281,8 +279,7 @@ export class CommissionsService {
             eligibilityDepositPaid: depositPaid,
             eligibilityAppointmentBooked: appointmentBookedOrEvent,
             eligibleAt: now,
-            snapshotLeadOwnerName:
-              order.lead?.currentOwner?.fullName ?? null,
+            snapshotLeadOwnerName: order.lead?.currentOwner?.fullName ?? null,
             snapshotSaleCreatorName: order.createdBy.fullName,
             snapshotRoleCode:
               order.lead?.currentOwner?.userRoles[0]?.role.code ?? null,
@@ -355,12 +352,8 @@ export class CommissionsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.type ? { type: query.type } : {}),
       ...(query.salesOrderId ? { salesOrderId: query.salesOrderId } : {}),
-      ...(query.branchId
-        ? { salesOrder: { branchId: query.branchId } }
-        : {}),
-      ...(query.group
-        ? { snapshot: { serviceGroupCode: query.group } }
-        : {}),
+      ...(query.branchId ? { salesOrder: { branchId: query.branchId } } : {}),
+      ...(query.group ? { snapshot: { serviceGroupCode: query.group } } : {}),
     };
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -632,8 +625,4 @@ const NON_PAID_STATUSES: ReadonlyArray<CommissionStatus> = [
 // Keep these symbols exported so `commissions.controller.ts` and other
 // modules can re-use them without needing to widen the surface area of
 // the service class.
-export type {
-  Commission,
-  CommissionSnapshot,
-  CommissionWithRelations,
-};
+export type { Commission, CommissionSnapshot, CommissionWithRelations };

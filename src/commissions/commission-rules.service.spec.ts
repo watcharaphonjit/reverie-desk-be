@@ -108,8 +108,12 @@ describe('CommissionRulesService — tier matching', () => {
 
     it('selection is order-independent — shuffled input picks the same row', () => {
       const shuffled = [...skin].reverse();
-      expect(pickHighestMatchingTier(shuffled, 3000)?.id).toBe('tier-skin-2001');
-      expect(pickHighestMatchingTier(shuffled, 15000)?.id).toBe('tier-skin-10000');
+      expect(pickHighestMatchingTier(shuffled, 3000)?.id).toBe(
+        'tier-skin-2001',
+      );
+      expect(pickHighestMatchingTier(shuffled, 15000)?.id).toBe(
+        'tier-skin-10000',
+      );
     });
 
     it('rules with null minAmount are ignored (defensive)', () => {
@@ -185,8 +189,16 @@ describe('CommissionRulesService — tier matching', () => {
       { subtotal: 7500, expectedTier: 'tier-skin-5000', expectedAmount: 225 },
       { subtotal: 10000, expectedTier: 'tier-skin-10000', expectedAmount: 500 },
       { subtotal: 15000, expectedTier: 'tier-skin-10000', expectedAmount: 750 },
-      { subtotal: 20000, expectedTier: 'tier-skin-20000', expectedAmount: 1400 },
-      { subtotal: 50000, expectedTier: 'tier-skin-20000', expectedAmount: 3500 },
+      {
+        subtotal: 20000,
+        expectedTier: 'tier-skin-20000',
+        expectedAmount: 1400,
+      },
+      {
+        subtotal: 50000,
+        expectedTier: 'tier-skin-20000',
+        expectedAmount: 3500,
+      },
     ];
 
     for (const c of cases) {

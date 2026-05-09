@@ -36,7 +36,9 @@ export class QueueService implements OnModuleDestroy {
 
   constructor(
     config: ConfigService,
-    @Optional() @Inject(QUEUE_INSTANCES) private readonly queues: QueueInstances = {},
+    @Optional()
+    @Inject(QUEUE_INSTANCES)
+    private readonly queues: QueueInstances = {},
   ) {
     this.redisEnabled = config.getOrThrow<RedisConfig>('redis').enabled;
   }
@@ -65,10 +67,7 @@ export class QueueService implements OnModuleDestroy {
     return this.add(QUEUE_NAMES.automation, 'run-rule', data, opts);
   }
 
-  enqueueReport(
-    data: ReportingJobData,
-    opts: JobsOptions = {},
-  ): Promise<void> {
+  enqueueReport(data: ReportingJobData, opts: JobsOptions = {}): Promise<void> {
     return this.add(QUEUE_NAMES.reporting, 'precompute', data, opts);
   }
 

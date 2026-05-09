@@ -4,12 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  AuditAction,
-  Prisma,
-  SalesOrder,
-  SalesOrderStatus,
-} from '@prisma/client';
+import { AuditAction, Prisma, SalesOrderStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { BranchesService } from '../branches/branches.service';
 import {
@@ -317,7 +312,8 @@ export class SalesOrdersService {
   ): Prisma.SalesOrderWhereInput {
     if (requestedBranchId) return { branchId: requestedBranchId };
     if (isUnrestricted(user)) return {};
-    if (!user.branchId) throw new ForbiddenException('User has no branch assignment');
+    if (!user.branchId)
+      throw new ForbiddenException('User has no branch assignment');
     return { branchId: user.branchId };
   }
 
@@ -353,10 +349,7 @@ export class SalesOrdersService {
     }
   }
 
-  private assertDepositValid(
-    deposit: number | undefined,
-    total: number,
-  ): void {
+  private assertDepositValid(deposit: number | undefined, total: number): void {
     if (deposit === undefined) return;
     if (deposit > total) {
       throw new BadRequestException(
@@ -531,9 +524,7 @@ async function generateOrderNo(tx: Prisma.TransactionClient): Promise<string> {
     select: { orderNo: true },
   });
 
-  const lastSeq = last
-    ? parseInt(last.orderNo.slice(prefix.length), 10)
-    : 0;
+  const lastSeq = last ? parseInt(last.orderNo.slice(prefix.length), 10) : 0;
   const nextSeq = (Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
   return `${prefix}${String(nextSeq).padStart(4, '0')}`;
 }

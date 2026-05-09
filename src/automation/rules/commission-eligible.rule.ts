@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CommissionStatus, NotificationType, Prisma } from '@prisma/client';
+import { CommissionStatus, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -54,7 +54,7 @@ export class CommissionEligibleRule implements AutomationRule {
         metadata: {
           commissionId: c.id,
           salesOrderId: c.salesOrder.id,
-        } as Prisma.InputJsonValue,
+        },
         dedupeKey: `COMMISSION_ELIGIBLE|${c.id}|${c.recipientUserId}`,
       });
       if (result.created) created++;

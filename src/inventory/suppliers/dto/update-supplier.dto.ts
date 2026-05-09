@@ -1,9 +1,4 @@
-import {
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
  * `code` is intentionally immutable once created — it's referenced by stock

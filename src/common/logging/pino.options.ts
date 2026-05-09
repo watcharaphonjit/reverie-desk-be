@@ -44,8 +44,7 @@ export function buildPinoOptions(): PinoModuleOptions {
         correlationId: (req as IncomingMessage & { id?: string }).id ?? null,
       }),
       autoLogging: {
-        ignore: (req: IncomingMessage) =>
-          HEALTH_PATTERN.test(req.url ?? ''),
+        ignore: (req: IncomingMessage) => HEALTH_PATTERN.test(req.url ?? ''),
       },
       customLogLevel: (
         _req: IncomingMessage,

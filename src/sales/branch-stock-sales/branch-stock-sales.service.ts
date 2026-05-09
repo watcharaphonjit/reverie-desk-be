@@ -21,10 +21,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ApproveRefundDto } from './dto/approve-refund.dto';
 import { BranchStockSaleQueryDto } from './dto/branch-stock-sale-query.dto';
 import { CancelBranchStockSaleDto } from './dto/cancel-branch-stock-sale.dto';
-import {
-  CreateBranchStockSaleDto,
-  CreateBranchStockSaleItemDto,
-} from './dto/create-branch-stock-sale.dto';
+import { CreateBranchStockSaleDto } from './dto/create-branch-stock-sale.dto';
 import { PayBranchStockSaleDto } from './dto/pay-branch-stock-sale.dto';
 import { RefundBranchStockSaleDto } from './dto/refund-branch-stock-sale.dto';
 
@@ -67,7 +64,10 @@ type RefundWithRelations = Prisma.BranchStockSaleRefundGetPayload<{
  * — once payment has been recorded, the only way to reverse is a refund
  * (which itself requires the sale to be COMPLETED first).
  */
-const ALLOWED_SALE_TRANSITIONS: Record<BranchStockSaleStatus, ReadonlySet<BranchStockSaleStatus>> = {
+const ALLOWED_SALE_TRANSITIONS: Record<
+  BranchStockSaleStatus,
+  ReadonlySet<BranchStockSaleStatus>
+> = {
   [BranchStockSaleStatus.DRAFT]: new Set([
     BranchStockSaleStatus.PAID,
     BranchStockSaleStatus.CANCELLED,
@@ -107,7 +107,9 @@ export class BranchStockSalesService {
   ): Promise<SaleWithRelations> {
     const [branch, salesChannel, customer] = await Promise.all([
       this.prisma.branch.findUnique({ where: { id: dto.branchId } }),
-      this.prisma.salesChannel.findUnique({ where: { id: dto.salesChannelId } }),
+      this.prisma.salesChannel.findUnique({
+        where: { id: dto.salesChannelId },
+      }),
       dto.customerId
         ? this.prisma.customer.findUnique({ where: { id: dto.customerId } })
         : Promise.resolve(null),
@@ -116,7 +118,8 @@ export class BranchStockSalesService {
     if (branch.status !== 'ACTIVE') {
       throw new BadRequestException('Branch is not active');
     }
-    if (!salesChannel) throw new BadRequestException('Sales channel does not exist');
+    if (!salesChannel)
+      throw new BadRequestException('Sales channel does not exist');
     if (!salesChannel.isActive) {
       throw new BadRequestException('Sales channel is not active');
     }
@@ -127,7 +130,10 @@ export class BranchStockSalesService {
     // Validate items + load stock-item snapshots up front so we fail fast on
     // invalid input before opening the transaction.
     const stockItems = await this.prisma.stockItem.findMany({
-      where: { id: { in: dto.items.map((i) => i.stockItemId) }, deletedAt: null },
+      where: {
+        id: { in: dto.items.map((i) => i.stockItemId) },
+        deletedAt: null,
+      },
       include: { primaryUnit: { select: { code: true, label: true } } },
     });
     const stockItemMap = new Map(stockItems.map((s) => [s.id, s]));
@@ -135,10 +141,14 @@ export class BranchStockSalesService {
     for (const [idx, item] of dto.items.entries()) {
       const si = stockItemMap.get(item.stockItemId);
       if (!si) {
-        throw new BadRequestException(`items[${idx}]: stock item does not exist`);
+        throw new BadRequestException(
+          `items[${idx}]: stock item does not exist`,
+        );
       }
       if (!si.isActive) {
-        throw new BadRequestException(`items[${idx}]: stock item is not active`);
+        throw new BadRequestException(
+          `items[${idx}]: stock item is not active`,
+        );
       }
       if (!si.isSellable) {
         throw new BadRequestException(
@@ -295,7 +305,9 @@ export class BranchStockSalesService {
           paidAt: paidAt.toISOString(),
           paidAmount: tendered,
           totalAmount: total,
-          ...(dto.paymentReference ? { paymentReference: dto.paymentReference } : {}),
+          ...(dto.paymentReference
+            ? { paymentReference: dto.paymentReference }
+            : {}),
         },
       });
 
@@ -332,7 +344,10 @@ export class BranchStockSalesService {
       for (const item of sale.items) {
         aggregateByLot.set(
           item.stockLotId,
-          round6((aggregateByLot.get(item.stockLotId) ?? 0) + decToNum(item.quantity)),
+          round6(
+            (aggregateByLot.get(item.stockLotId) ?? 0) +
+              decToNum(item.quantity),
+          ),
         );
       }
 
@@ -348,7 +363,9 @@ export class BranchStockSalesService {
       for (const [lotId, totalQty] of aggregateByLot) {
         const lot = lotMap.get(lotId);
         if (!lot) {
-          throw new BadRequestException(`Allocated lot ${lotId} no longer exists`);
+          throw new BadRequestException(
+            `Allocated lot ${lotId} no longer exists`,
+          );
         }
         if (lot.status !== StockLotStatus.ACTIVE) {
           throw new BadRequestException(
@@ -470,7 +487,17 @@ export class BranchStockSalesService {
         where: { id: saleId },
         include: {
           items: true,
-          refunds: { where: { status: { in: [RefundStatus.REQUESTED, RefundStatus.APPROVED, RefundStatus.COMPLETED] } } },
+          refunds: {
+            where: {
+              status: {
+                in: [
+                  RefundStatus.REQUESTED,
+                  RefundStatus.APPROVED,
+                  RefundStatus.COMPLETED,
+                ],
+              },
+            },
+          },
         },
       });
       if (!sale) throw new NotFoundException('Branch stock sale not found');
@@ -528,7 +555,9 @@ export class BranchStockSalesService {
         const isFinalUnit =
           round6(alreadyRefundedQty + line.quantity) === itemQty;
         const lineAmount = isFinalUnit
-          ? round2(lineNetAfterDiscount - round2(alreadyRefundedQty * perUnitNet))
+          ? round2(
+              lineNetAfterDiscount - round2(alreadyRefundedQty * perUnitNet),
+            )
           : round2(line.quantity * perUnitNet);
 
         refundAmount = round2(refundAmount + lineAmount);
@@ -636,7 +665,9 @@ export class BranchStockSalesService {
       for (const lotId of lotIds) {
         await tx.$executeRaw`SELECT id FROM stock_lots WHERE id = ${lotId} FOR UPDATE`;
       }
-      const lots = await tx.stockLot.findMany({ where: { id: { in: lotIds } } });
+      const lots = await tx.stockLot.findMany({
+        where: { id: { in: lotIds } },
+      });
       const lotMap = new Map(lots.map((l) => [l.id, l]));
 
       // Aggregate restore quantities per lot.
@@ -915,9 +946,7 @@ interface AllocatedItem {
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
 
-const decToNum = (
-  v: Prisma.Decimal | number | null | undefined,
-): number => {
+const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
   return Number(v.toString());

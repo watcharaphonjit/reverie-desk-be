@@ -25,7 +25,12 @@ const RECEIPT_INCLUDE = {
   branch: { select: { id: true, code: true, name: true } },
   supplier: { select: { id: true, code: true, name: true } },
   stockLots: {
-    select: { id: true, lotCode: true, quantityReceived: true, quantityOnHand: true },
+    select: {
+      id: true,
+      lotCode: true,
+      quantityReceived: true,
+      quantityOnHand: true,
+    },
   },
 } satisfies Prisma.PurchaseReceiptInclude;
 
@@ -65,7 +70,9 @@ export class PurchaseReceiptsService {
       this.validateItemBatchPreflight(dto.items, dto.warehouseId);
     }
 
-    const purchasedAt = dto.purchasedAt ? new Date(dto.purchasedAt) : new Date();
+    const purchasedAt = dto.purchasedAt
+      ? new Date(dto.purchasedAt)
+      : new Date();
 
     return this.prisma.$transaction(async (tx) => {
       const referenceNo = await generatePurchaseReceiptNo(tx, purchasedAt);
@@ -128,9 +135,7 @@ export class PurchaseReceiptsService {
         );
       }
       if (item.unitCost < 0) {
-        throw new BadRequestException(
-          `items[${idx}]: unitCost must be >= 0`,
-        );
+        throw new BadRequestException(`items[${idx}]: unitCost must be >= 0`);
       }
       const key = `${warehouseId}::${item.lotCode}`;
       const existing = seen.get(key);
@@ -208,7 +213,9 @@ export class PurchaseReceiptsService {
         quantityOnHand: new Prisma.Decimal(item.quantityReceived),
         unitCost: new Prisma.Decimal(item.unitCost),
         receivedAt: dto.purchasedAt ? new Date(dto.purchasedAt) : new Date(),
-        manufacturedAt: item.manufacturedAt ? new Date(item.manufacturedAt) : null,
+        manufacturedAt: item.manufacturedAt
+          ? new Date(item.manufacturedAt)
+          : null,
         expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
         status: StockLotStatus.ACTIVE,
       },

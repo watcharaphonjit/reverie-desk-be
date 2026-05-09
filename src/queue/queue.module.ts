@@ -1,11 +1,7 @@
 import { Global, Logger, Module, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import {
-  QUEUE_INSTANCES,
-  QueueInstances,
-  QueueService,
-} from './queue.service';
+import { QUEUE_INSTANCES, QueueInstances, QueueService } from './queue.service';
 import { QUEUE_NAMES } from './queue.constants';
 import type { RedisConfig } from '../config/redis.config';
 

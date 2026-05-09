@@ -136,9 +136,7 @@ export interface AssembledProgress {
  * targets only count revenue that maps to a known commission group.
  * Ungrouped revenue is surfaced separately for ops visibility.
  */
-export function assembleQuarterProgress(
-  args: AssembleArgs,
-): AssembledProgress {
+export function assembleQuarterProgress(args: AssembleArgs): AssembledProgress {
   let ungroupedActual = new Prisma.Decimal(0);
   const actualByGroup = new Map<ServiceGroupCode, Prisma.Decimal>();
   for (const row of args.actualsByGroup) {

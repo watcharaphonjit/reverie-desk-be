@@ -85,7 +85,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const code = pascalToSnakeUpper(
         exception.constructor.name.replace(/Exception$/, ''),
       );
-      if (typeof res === 'string') return { statusCode: status, code, message: res };
+      if (typeof res === 'string')
+        return { statusCode: status, code, message: res };
       const obj = res as Record<string, unknown>;
       const raw = obj.message ?? obj.error ?? 'Error';
       if (Array.isArray(raw)) {
@@ -96,7 +97,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           details: raw,
         };
       }
-      return { statusCode: status, code, message: String(raw) };
+      return { statusCode: status, code, message: JSON.stringify(raw) };
     }
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {

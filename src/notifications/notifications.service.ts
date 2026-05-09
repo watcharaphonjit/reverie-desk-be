@@ -241,9 +241,7 @@ export class NotificationsService {
       message: dto.message,
       type: dto.type,
       channel: dto.channel,
-      metadata: dto.metadata
-        ? (dto.metadata as Prisma.InputJsonValue)
-        : null,
+      metadata: dto.metadata ? (dto.metadata as Prisma.InputJsonValue) : null,
     });
     this.logger.log(
       `User ${actor.id} created notification ${result.notification.id}`,

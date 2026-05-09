@@ -79,9 +79,7 @@ export class DashboardService {
     const branchFilter: Prisma.SalesOrderWhereInput =
       branchScope === undefined ? {} : { branchId: branchScope };
     const warehouseFilter: Prisma.StockLotWhereInput =
-      branchScope === undefined
-        ? {}
-        : { warehouse: { branchId: branchScope } };
+      branchScope === undefined ? {} : { warehouse: { branchId: branchScope } };
 
     const [
       todayAgg,
@@ -93,12 +91,18 @@ export class DashboardService {
       pendingCommissions,
     ] = await Promise.all([
       this.prisma.salesOrder.aggregate({
-        where: { ...branchFilter, createdAt: { gte: today.start, lt: today.end } },
+        where: {
+          ...branchFilter,
+          createdAt: { gte: today.start, lt: today.end },
+        },
         _count: { _all: true },
         _sum: { totalAmount: true },
       }),
       this.prisma.salesOrder.aggregate({
-        where: { ...branchFilter, createdAt: { gte: month.start, lt: month.end } },
+        where: {
+          ...branchFilter,
+          createdAt: { gte: month.start, lt: month.end },
+        },
         _count: { _all: true },
         _sum: { totalAmount: true },
       }),
@@ -108,7 +112,13 @@ export class DashboardService {
           ...branchFilter,
           depositSatisfiedAt: null,
           depositRequired: { gt: 0 },
-          status: { notIn: [SalesOrderStatus.CANCELLED, SalesOrderStatus.COMPLETED, SalesOrderStatus.REFUNDED] },
+          status: {
+            notIn: [
+              SalesOrderStatus.CANCELLED,
+              SalesOrderStatus.COMPLETED,
+              SalesOrderStatus.REFUNDED,
+            ],
+          },
         },
         select: {
           id: true,
@@ -141,9 +151,7 @@ export class DashboardService {
       this.prisma.commission.count({
         where: {
           status: { in: [CommissionStatus.ELIGIBLE, CommissionStatus.LOCKED] },
-          ...(branchScope
-            ? { salesOrder: { branchId: branchScope } }
-            : {}),
+          ...(branchScope ? { salesOrder: { branchId: branchScope } } : {}),
         },
       }),
     ]);
@@ -210,7 +218,9 @@ export class DashboardService {
           where: {
             branchId,
             deletedAt: null,
-            status: { in: [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.QUALIFIED] },
+            status: {
+              in: [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.QUALIFIED],
+            },
           },
         }),
         this.lowStockItems(branchId),

@@ -49,10 +49,7 @@ export class WalletController {
   @Post('credit')
   @HttpCode(HttpStatus.OK)
   @Roles(...WRITE_ROLES)
-  credit(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreditWalletDto,
-  ) {
+  credit(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreditWalletDto) {
     return this.wallet.credit(user, dto);
   }
 

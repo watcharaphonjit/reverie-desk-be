@@ -98,10 +98,7 @@ export class BranchStockSalesController {
 
   @Patch(':id/complete')
   @Roles(...WRITE_ROLES)
-  complete(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.sales.complete(user, id);
   }
 
