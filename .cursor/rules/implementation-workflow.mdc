@@ -1,0 +1,64 @@
+---
+alwaysApply: true
+---
+
+# Implementation Workflow Rule
+
+## Mandatory Pre-Implementation Steps
+
+Before implementing any feature, bugfix, refactor, migration, or schema change:
+
+1. Read all files under `/docs`
+2. Understand:
+
+   * current architecture
+   * business rules
+   * module dependencies
+   * existing workflow constraints
+3. Verify requested changes align with documented system behavior
+4. Identify impacted modules before writing code
+
+Implementation must never begin without first reading project documentation.
+
+---
+
+## Mandatory Post-Implementation Steps
+
+After implementation:
+
+1. Identify all affected documentation files
+2. Update documentation to reflect actual code changes
+3. Ensure docs match implementation exactly
+4. Update diagrams if module relationships changed
+5. Update workflow definitions if business logic changed
+
+---
+
+## Documentation Authority
+
+Documentation under `/docs` is the system source of truth.
+
+If implementation differs from docs:
+
+* update docs immediately
+  OR
+* explicitly document intentional deviation
+
+Never leave code and docs inconsistent.
+
+---
+
+## If Documentation Is Missing
+
+When implementing undocumented functionality:
+
+1. implement carefully
+2. create or extend relevant docs
+3. explain module integration
+4. document business rules introduced
+
+---
+
+## Enforcement
+
+Do not finalize implementation until documentation is updated.

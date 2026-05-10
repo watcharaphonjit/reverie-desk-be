@@ -1,0 +1,19 @@
+---
+alwaysApply: true
+---
+
+# Architecture First Rule
+
+Never introduce:
+
+* duplicate modules
+* overlapping services
+* conflicting domain terminology
+* undocumented relationships
+* parallel implementations of existing flows
+
+Before creating new entities or modules:
+
+Search existing codebase and docs for reuse opportunities.
+
+Prefer extending existing domain flows over creating new isolated implementations.
