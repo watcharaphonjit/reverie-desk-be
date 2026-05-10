@@ -16,6 +16,11 @@ export class ListLeadsQuery extends PaginationDto {
   @IsString()
   ownerId?: string;
 
+  /** Free-form channel filter (matches `Lead.channel` exactly). */
+  @IsOptional()
+  @IsString()
+  channel?: string;
+
   @IsOptional()
   @IsString()
   search?: string;

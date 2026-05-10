@@ -3,11 +3,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AuditAction, Customer, Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  Customer,
+  Prisma,
+  SalesOrderStatus,
+  ServiceEventStatus,
+} from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { BranchesService } from '../branches/branches.service';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
+import { composeFullName } from '../common/utils/name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerQueryDto } from './dto/customer-query.dto';
@@ -32,14 +39,30 @@ export class CustomerService {
       await this.branches.validateBranchActive(dto.currentBranchId);
     }
 
+    const fullName = composeFullName(dto);
+
     return this.prisma.$transaction(async (tx) => {
       const code = await generateMonthlyCode(tx, 'CUST', 'customer-code');
       const customer = await tx.customer.create({
         data: {
           code,
-          fullName: dto.fullName,
+          fullName,
+          title: dto.title,
+          firstName: dto.firstName,
+          middleName: dto.middleName,
+          lastName: dto.lastName,
+          nickname: dto.nickname,
           phone: dto.phone,
           email: dto.email,
+          lineId: dto.lineId,
+          gender: dto.gender,
+          birthdate: dto.birthdate ?? null,
+          address: dto.address,
+          province: dto.province,
+          postalCode: dto.postalCode,
+          level: dto.level,
+          isActive: dto.isActive,
+          allergy: dto.allergy,
           notes: dto.notes,
           currentBranchId: dto.currentBranchId ?? null,
         },
@@ -74,8 +97,12 @@ export class CustomerService {
         ? {
             OR: [
               { fullName: { contains: query.search, mode: 'insensitive' } },
+              { firstName: { contains: query.search, mode: 'insensitive' } },
+              { lastName: { contains: query.search, mode: 'insensitive' } },
+              { nickname: { contains: query.search, mode: 'insensitive' } },
               { phone: { contains: query.search } },
               { email: { contains: query.search, mode: 'insensitive' } },
+              { lineId: { contains: query.search, mode: 'insensitive' } },
               { code: { contains: query.search, mode: 'insensitive' } },
             ],
           }
@@ -96,6 +123,13 @@ export class CustomerService {
   }
 
   // ───────────────────────── detail ─────────────────────────
+  /**
+   * Customer detail including the three derived totals
+   * (`totalSpent`, `visitCount`, `lastVisitAt`) the frontend needs for
+   * the customer profile header. Computed live so we don't have to
+   * keep a denormalized cache in sync with sales / service-event
+   * mutations across multiple modules.
+   */
   async findOne(id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
@@ -106,7 +140,42 @@ export class CustomerService {
     if (!customer || customer.deletedAt) {
       throw new NotFoundException('Customer not found');
     }
-    return customer;
+
+    // Three independent aggregates, dispatched in parallel:
+    //  1. Total spend = sum of paid/completed sales-order totals.
+    //  2. Visit count = number of completed service events.
+    //  3. Last visit  = most recent service-event completion timestamp.
+    const [salesAgg, visitAgg, lastVisitRow] = await Promise.all([
+      this.prisma.salesOrder.aggregate({
+        where: {
+          customerId: id,
+          status: { in: [SalesOrderStatus.PAID, SalesOrderStatus.COMPLETED] },
+        },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.customerServiceEvent.count({
+        where: {
+          customerId: id,
+          status: ServiceEventStatus.COMPLETED,
+        },
+      }),
+      this.prisma.customerServiceEvent.findFirst({
+        where: {
+          customerId: id,
+          status: ServiceEventStatus.COMPLETED,
+          completedAt: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+        select: { completedAt: true },
+      }),
+    ]);
+
+    return {
+      ...customer,
+      totalSpent: salesAgg._sum.totalAmount ?? new Prisma.Decimal(0),
+      visitCount: visitAgg,
+      lastVisitAt: lastVisitRow?.completedAt ?? null,
+    };
   }
 
   // ───────────────────────── update ─────────────────────────
@@ -130,8 +199,25 @@ export class CustomerService {
       await this.branches.validateBranchActive(dto.currentBranchId);
     }
 
+    // Re-derive `fullName` whenever any name component is touched so
+    // the cached column stays consistent with the split fields.
+    const data: Prisma.CustomerUpdateInput = { ...dto };
+    if (
+      dto.title !== undefined ||
+      dto.firstName !== undefined ||
+      dto.middleName !== undefined ||
+      dto.lastName !== undefined
+    ) {
+      data.fullName = composeFullName({
+        title: dto.title ?? existing.title,
+        firstName: dto.firstName ?? existing.firstName,
+        middleName: dto.middleName ?? existing.middleName,
+        lastName: dto.lastName ?? existing.lastName,
+      });
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.customer.update({ where: { id }, data: dto });
+      const updated = await tx.customer.update({ where: { id }, data });
       await this.audit.recordWith(tx, {
         actorUserId: user.id,
         branchId: updated.currentBranchId,
@@ -254,25 +340,40 @@ export class CustomerService {
     before: Customer,
     after: Customer,
   ): Prisma.InputJsonValue {
-    const diff: Record<string, Prisma.InputJsonValue> = {};
     const fields: (keyof Customer)[] = [
       'fullName',
+      'title',
+      'firstName',
+      'middleName',
+      'lastName',
+      'nickname',
       'phone',
       'email',
+      'lineId',
+      'gender',
+      'address',
+      'province',
+      'postalCode',
+      'level',
+      'isActive',
+      'allergy',
       'notes',
       'currentBranchId',
     ];
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
     for (const f of fields) {
       const b = before[f];
       const a = after[f];
       if (b !== a) {
         diff[f] = {
-          from: b == null ? null : b,
-          to: a == null ? null : a,
+          from: b instanceof Date ? b.toISOString() : (b ?? null),
+          to: a instanceof Date ? a.toISOString() : (a ?? null),
         };
       }
     }
-    return diff;
+    // Round-trip through JSON to drop any non-serializable fields and
+    // collapse `Decimal`/`Date` instances to their JSON representation.
+    return JSON.parse(JSON.stringify(diff)) as Prisma.InputJsonValue;
   }
 }
 

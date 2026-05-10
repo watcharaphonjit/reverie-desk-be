@@ -14,6 +14,7 @@ import {
   isUnrestricted,
 } from '../common/authz/branch-scope';
 import { AuditService } from '../common/services/audit.service';
+import { composeFullName } from '../common/utils/name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -24,6 +25,10 @@ const SAFE_USER_SELECT = {
   id: true,
   email: true,
   phone: true,
+  title: true,
+  firstName: true,
+  middleName: true,
+  lastName: true,
   fullName: true,
   branchId: true,
   status: true,
@@ -56,10 +61,11 @@ export class UsersService {
     if (rest.branchId) await this.branches.validateBranchActive(rest.branchId);
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const fullName = composeFullName(rest);
 
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
-        data: { ...rest, passwordHash },
+        data: { ...rest, fullName, passwordHash },
         select: SAFE_USER_SELECT,
       });
 
@@ -138,9 +144,32 @@ export class UsersService {
     const existing = await this.requireUser(id);
     assertBranchAccess(actor, existing.branchId);
     if (dto.branchId) await this.branches.validateBranchActive(dto.branchId);
+
+    // Re-compose `fullName` whenever any name component is touched. We
+    // load the current name parts so a partial update (e.g. only
+    // `lastName`) still produces a coherent full name.
+    const data: Prisma.UserUpdateInput = { ...dto };
+    const touchesName =
+      dto.title !== undefined ||
+      dto.firstName !== undefined ||
+      dto.middleName !== undefined ||
+      dto.lastName !== undefined;
+    if (touchesName) {
+      const current = await this.prisma.user.findUniqueOrThrow({
+        where: { id },
+        select: {
+          title: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+        },
+      });
+      data.fullName = composeFullName({ ...current, ...dto });
+    }
+
     return this.prisma.user.update({
       where: { id },
-      data: dto,
+      data,
       select: SAFE_USER_SELECT,
     });
   }

@@ -55,5 +55,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # Use tini so SIGTERM propagates correctly to Node and triggers the
 # graceful shutdown hooks (Prisma/Redis/BullMQ disconnect).
+#
+# The default CMD runs pending Prisma migrations (idempotent — uses an
+# advisory lock; safe across replica restarts) and then `exec`s into the
+# Node process so PID 1 is Node, not the wrapping shell. Workers should
+# override CMD to skip migrations:
+#     CMD ["node", "dist/src/worker.js"]
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/src/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/main.js"]

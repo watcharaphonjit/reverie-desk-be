@@ -11,7 +11,9 @@ import { prisma } from '../src/lib/prisma';
 const DEFAULT_ADMIN = {
   email: 'admin@reverie.local',
   password: 'Admin123!',
-  fullName: 'System Admin',
+  title: 'Mr.',
+  firstName: 'System',
+  lastName: 'Admin',
 } as const;
 
 /**
@@ -98,6 +100,15 @@ async function main() {
     },
   });
 
+  await prisma.branch.upsert({
+    where: { code: 'KK' },
+    update: {},
+    create: {
+      code: 'KK',
+      name: 'Khon Kaen',
+    },
+  });
+
   await prisma.role.createMany({
     data: Object.values(RoleCode).map((code) => ({
       code,
@@ -159,7 +170,10 @@ async function seedDefaultAdmin(branchId: string): Promise<void> {
   await prisma.user.create({
     data: {
       email: DEFAULT_ADMIN.email,
-      fullName: DEFAULT_ADMIN.fullName,
+      title: DEFAULT_ADMIN.title,
+      firstName: DEFAULT_ADMIN.firstName,
+      lastName: DEFAULT_ADMIN.lastName,
+      fullName: `${DEFAULT_ADMIN.title} ${DEFAULT_ADMIN.firstName} ${DEFAULT_ADMIN.lastName}`,
       passwordHash,
       branchId,
       status: UserStatus.ACTIVE,

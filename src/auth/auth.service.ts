@@ -42,6 +42,13 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        title: user.title,
+        firstName: user.firstName,
+        middleName: user.middleName,
+        lastName: user.lastName,
+        // `fullName` is kept on the response for back-compat; the split
+        // fields above are the ones the frontend should bind to going
+        // forward (the column is auto-derived in `UsersService`).
         fullName: user.fullName,
         roles,
       },

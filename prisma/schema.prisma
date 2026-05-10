@@ -111,7 +111,7 @@ enum CommissionValueType {
   FIXED
   PERCENTAGE
 }
- 
+
 /// Commission grouping for tiered rules. Every Service must declare which
 /// group it belongs to (`Service.commissionGroupCode`); a CommissionRule
 /// targets a (branch, group) pair with a list of tier rows. The set of
@@ -267,6 +267,21 @@ enum NotificationChannel {
   SMS
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+/// Loyalty / membership level for a Customer. Promotion rules live in
+/// the customer service layer; this enum is just the canonical set.
+enum CustomerLevel {
+  SILVER
+  GOLD
+  PLATINUM
+  VIP
+}
+
 model Branch {
   id        String       @id @default(cuid())
   code      String       @unique
@@ -300,6 +315,18 @@ model User {
   id           String     @id @default(cuid())
   email        String     @unique
   phone        String?    @unique
+  /// Optional honorific / prefix (e.g. "Dr.", "Mr.").
+  title        String?
+  /// Required at the API boundary. Defaulted at the column level so
+  /// historical rows (pre-split-name migration) don't block the schema.
+  firstName    String     @default("")
+  /// Optional. Most users won't have a middle name.
+  middleName   String?
+  lastName     String     @default("")
+  /// Display name. Maintained automatically by the service layer as
+  /// `[title, firstName, middleName, lastName].filter(Boolean).join(' ')`.
+  /// Kept on the row for back-compat with code paths that snapshot user
+  /// names into denormalized history tables (commissions, audit logs).
   fullName     String
   passwordHash String
   branchId     String?
@@ -398,20 +425,43 @@ model UserRole {
 }
 
 model Customer {
-  id              String    @id @default(cuid())
-  code            String    @unique
+  id              String        @id @default(cuid())
+  code            String        @unique
+  /// Cached display name. Auto-composed from the split fields below by
+  /// `CustomerService` on every write. Internal callers (reports,
+  /// commission snapshots, audit) continue to use this column.
   fullName        String
-  phone           String?   @unique
-  email           String?   @unique
-  birthDate       DateTime?
+  title           String?
+  firstName       String        @default("")
+  middleName      String?
+  lastName        String        @default("")
+  /// Optional informal name used in CS interactions ("Aom", "Joy").
+  nickname        String?
+  phone           String?       @unique
+  email           String?       @unique
+  /// LINE messaging app user id.
+  lineId          String?
+  gender          Gender?
+  birthdate       DateTime?
+  address         String?
+  province        String?
+  postalCode      String?
+  level           CustomerLevel @default(SILVER)
+  /// Soft-disable flag distinct from `deletedAt`. Lets ops temporarily
+  /// pause a customer (e.g. payment freeze) without losing history.
+  isActive        Boolean       @default(true)
+  /// Free-form text — drug allergies, intolerances, etc. Surfaced to
+  /// the doctor at appointment / service-event time.
+  allergy         String?
   notes           String?
   currentBranchId String?
   deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   currentBranch    Branch?                @relation("CustomerCurrentBranch", fields: [currentBranchId], references: [id], onDelete: SetNull)
   leads            Lead[]                 @relation("LeadCustomer")
+  leadsConverted   Lead[]                 @relation("LeadConvertedCustomer")
   salesOrders      SalesOrder[]           @relation("SalesOrderCustomer")
   appointments     Appointment[]          @relation("AppointmentCustomer")
   serviceEvents    CustomerServiceEvent[] @relation("ServiceEventCustomer")
@@ -423,26 +473,62 @@ model Customer {
   @@index([currentBranchId])
   @@index([fullName])
   @@index([phone])
+  @@index([level])
+  @@index([isActive])
   @@map("customers")
 }
 
 model Lead {
-  id                 String     @id @default(cuid())
-  code               String     @unique
-  branchId           String
-  customerId         String?
-  name               String
-  phone              String?
-  source             String?
-  status             LeadStatus @default(NEW)
-  currentOwnerUserId String?
-  createdByUserId    String
-  deletedAt          DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  code                String     @unique
+  branchId            String
+  /// Optional pre-existing customer linked at lead creation time.
+  customerId          String?
+  /// Cached display name. Auto-composed from the split fields below by
+  /// `LeadsService` on every write — selecting `name` continues to work
+  /// for legacy callers (reports, audit, commission snapshots).
+  name                String
+  /// Honorific / title (e.g. "Mr.", "Khun"). Optional.
+  title               String?
+  firstName           String     @default("")
+  middleName          String?
+  lastName            String     @default("")
+  phone               String?
+  email               String?
+  /// LINE messaging app user id (channel-specific contact handle).
+  lineId              String?
+  /// Facebook profile / display name.
+  facebookName        String?
+  /// Free-form acquisition source (campaign, referrer code, etc).
+  /// Kept distinct from `channel` so reporting can group both ways.
+  source              String?
+  /// Free-form contact channel (e.g. "Line OA", "Web", "Walk-in").
+  /// No enum: the set of channels is product-driven and can grow without
+  /// a schema migration.
+  channel             String?
+  notes               String?
+  /// Auto-set by `LeadsService.create` to `createdAt + 60 days`.
+  /// Pure derivable column — no cron flips status; downstream
+  /// queries/UI gate on `expiresAt < now()`.
+  expiresAt           DateTime?
+  /// Stamped each time the lead transitions into CONTACTED, or by
+  /// the (future) interaction endpoint when one is recorded.
+  lastContactedAt     DateTime?
+  /// Set exactly once, by `LeadsService.convert`, to the customer
+  /// minted/linked from the conversion. Distinct from `customerId`,
+  /// which can be set at lead creation when an existing customer is
+  /// linked up-front.
+  convertedCustomerId String?
+  status              LeadStatus @default(NEW)
+  currentOwnerUserId  String?
+  createdByUserId     String
+  deletedAt           DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   branch              Branch               @relation("LeadBranch", fields: [branchId], references: [id], onDelete: Restrict)
   customer            Customer?            @relation("LeadCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  convertedCustomer   Customer?            @relation("LeadConvertedCustomer", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
   currentOwner        User?                @relation("LeadCurrentOwner", fields: [currentOwnerUserId], references: [id], onDelete: SetNull)
   createdBy           User                 @relation("LeadCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   ownerLogs           LeadOwnerLog[]       @relation("LeadOwnerLogLead")
@@ -453,6 +539,8 @@ model Lead {
   @@index([currentOwnerUserId, updatedAt])
   @@index([createdByUserId, createdAt])
   @@index([customerId])
+  @@index([convertedCustomerId])
+  @@index([expiresAt])
   @@map("leads")
 }
 
@@ -596,30 +684,30 @@ model Payment {
 }
 
 model Appointment {
-  id                     String            @id @default(cuid())
-  appointmentNo          String            @unique
-  branchId               String
-  salesOrderId           String
-  customerId             String
-  serviceId              String
-  doctorUserId           String?
-  createdByUserId        String
-  status                 AppointmentStatus @default(BOOKED)
-  scheduledAt            DateTime
-  checkedInAt            DateTime?
-  completedAt            DateTime?
-  notes                  String?
+  id                    String            @id @default(cuid())
+  appointmentNo         String            @unique
+  branchId              String
+  salesOrderId          String
+  customerId            String
+  serviceId             String
+  doctorUserId          String?
+  createdByUserId       String
+  status                AppointmentStatus @default(BOOKED)
+  scheduledAt           DateTime
+  checkedInAt           DateTime?
+  completedAt           DateTime?
+  notes                 String?
   /// Optional — set when the visit is redeemed against a treatment
   /// program. Validated at booking time (must match customer + service,
   /// must have remaining sessions, must not be expired).
-  entitlementId          String?
+  entitlementId         String?
   /// Stamped exactly once when this appointment's session has been
   /// drawn down from the entitlement. Acts as the idempotency key for
   /// both `complete()` (auto-consume) and the explicit
   /// `POST /appointments/:id/consume` endpoint.
-  entitlementConsumedAt  DateTime?
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  entitlementConsumedAt DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   branch        Branch                 @relation("AppointmentBranch", fields: [branchId], references: [id], onDelete: Restrict)
   salesOrder    SalesOrder             @relation("AppointmentSalesOrder", fields: [salesOrderId], references: [id], onDelete: Cascade)

@@ -41,7 +41,7 @@ services:
     command:
       - sh
       - -c
-      - 'npx prisma migrate deploy && node dist/src/main.js'
+      - 'npx prisma migrate deploy && exec node dist/src/main.js'
 
   worker:
     image: ${IMAGE_REPO:-reverie-desk}:${IMAGE_TAG:-latest}

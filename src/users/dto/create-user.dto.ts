@@ -24,9 +24,26 @@ export class CreateUserDto {
   })
   password!: string;
 
+  /** Optional honorific (e.g. "Dr.", "Mr.", "Khun"). */
+  @IsOptional()
   @IsString()
-  @MaxLength(120)
-  fullName!: string;
+  @MaxLength(20)
+  title?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  firstName!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  middleName?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  lastName!: string;
 
   @IsOptional()
   @IsString()
