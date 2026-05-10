@@ -1,0 +1,3 @@
+# Force LF on shell scripts so Alpine `sh` doesn't choke on CRLF when
+# the repo is checked out on Windows and copied into the Docker image.
+*.sh text eol=lf

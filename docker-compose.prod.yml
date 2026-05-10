@@ -38,10 +38,7 @@ services:
     logging:
       driver: json-file
       options: { max-size: '10m', max-file: '5' }
-    command:
-      - sh
-      - -c
-      - 'npx prisma migrate deploy && exec node dist/src/main.js'
+    command: ['./scripts/docker-start.sh']
 
   worker:
     image: ${IMAGE_REPO:-reverie-desk}:${IMAGE_TAG:-latest}

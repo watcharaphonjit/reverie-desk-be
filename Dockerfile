@@ -46,6 +46,8 @@ COPY --from=build --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/prisma ./prisma
 COPY --from=build --chown=app:app /app/package.json ./package.json
 COPY --from=build --chown=app:app /app/package-lock.json ./package-lock.json
+COPY --from=build --chown=app:app /app/scripts/docker-start.sh ./scripts/docker-start.sh
+RUN chmod +x ./scripts/docker-start.sh
 
 USER app
 
@@ -56,10 +58,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # Use tini so SIGTERM propagates correctly to Node and triggers the
 # graceful shutdown hooks (Prisma/Redis/BullMQ disconnect).
 #
-# The default CMD runs pending Prisma migrations (idempotent — uses an
-# advisory lock; safe across replica restarts) and then `exec`s into the
-# Node process so PID 1 is Node, not the wrapping shell. Workers should
-# override CMD to skip migrations:
+# The entrypoint script:
+#   - Validates DATABASE_URL is present (fails with a clear, actionable
+#     message instead of the cryptic Prisma "datasource.url required").
+#   - Runs `prisma migrate deploy` (idempotent, advisory-locked across
+#     replicas). Set SKIP_PRISMA_MIGRATE=1 to bypass.
+#   - `exec`s into Node so PID 1 is Node, not the wrapping shell.
+#
+# Workers override CMD to skip both validation and migration:
 #     CMD ["node", "dist/src/worker.js"]
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/main.js"]
+CMD ["./scripts/docker-start.sh"]

@@ -66,10 +66,7 @@ services:
       ENABLE_QUEUES: 'true'
     ports:
       - '3000:3000'
-    command:
-      - sh
-      - -c
-      - 'npx prisma migrate deploy && node dist/src/main.js'
+    command: ['./scripts/docker-start.sh']
 
   worker:
     build:
