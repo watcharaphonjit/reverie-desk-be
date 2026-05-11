@@ -10,6 +10,7 @@ import {
   AppointmentStatus,
   AuditAction,
   Prisma,
+  SalesOrderStatus,
   TreatmentEntitlement,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
@@ -28,6 +29,9 @@ export interface EntitlementView {
   serviceName: string;
   serviceCode: string;
   salesOrderItemId: string;
+  salesOrderId: string;
+  salesOrderNo: string;
+  salesOrderStatus: SalesOrderStatus;
   totalSessions: number;
   consumedSessions: number;
   remainingSessions: number;
@@ -40,6 +44,17 @@ export interface EntitlementView {
 
 const ENTITLEMENT_INCLUDE = {
   service: { select: { id: true, code: true, name: true } },
+  salesOrderItem: {
+    select: {
+      salesOrder: {
+        select: {
+          id: true,
+          orderNo: true,
+          status: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.TreatmentEntitlementInclude;
 
 type EntitlementWithService = Prisma.TreatmentEntitlementGetPayload<{
@@ -477,6 +492,9 @@ export function toView(row: EntitlementWithService): EntitlementView {
     serviceName: row.service.name,
     serviceCode: row.service.code,
     salesOrderItemId: row.salesOrderItemId,
+    salesOrderId: row.salesOrderItem.salesOrder.id,
+    salesOrderNo: row.salesOrderItem.salesOrder.orderNo,
+    salesOrderStatus: row.salesOrderItem.salesOrder.status,
     totalSessions: row.totalSessions,
     consumedSessions: row.consumedSessions,
     remainingSessions: remaining,

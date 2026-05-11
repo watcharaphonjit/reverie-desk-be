@@ -15,6 +15,10 @@ import { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { AuditService } from '../../common/services/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  AdjustStockLotDto,
+  StockAdjustmentReason,
+} from './dto/adjust-stock-lot.dto';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import {
   ExpiringStockLotQueryDto,
@@ -248,7 +252,236 @@ export class StockLotsService {
     return lot;
   }
 
+  async adjust(
+    user: AuthenticatedUser,
+    id: string,
+    dto: AdjustStockLotDto,
+  ): Promise<StockLotWithRelations> {
+    return this.prisma.$transaction(async (tx) => {
+      const lot = await tx.stockLot.findUnique({
+        where: { id },
+        include: { warehouse: { select: { branchId: true } } },
+      });
+      if (!lot) throw new NotFoundException('Stock lot not found');
+      this.assertMutableLot(lot.status);
+
+      const currentOnHand = this.decToNum(lot.quantityOnHand);
+      const nextOnHand = this.round6(dto.quantityOnHand);
+      const delta = this.round6(nextOnHand - currentOnHand);
+      if (delta === 0) {
+        throw new BadRequestException('quantityOnHand is unchanged');
+      }
+
+      const nextStatus = this.statusAfterAdjustment(lot.status, nextOnHand);
+      await tx.stockLot.update({
+        where: { id },
+        data: {
+          quantityOnHand: new Prisma.Decimal(nextOnHand),
+          status: nextStatus,
+        },
+      });
+
+      await tx.stockMovement.create({
+        data: {
+          stockLotId: lot.id,
+          warehouseId: lot.warehouseId,
+          createdByUserId: user.id,
+          type: StockMovementType.ADJUSTMENT,
+          quantityDelta: new Prisma.Decimal(delta),
+          unitCost: lot.unitCost,
+          referenceType: 'STOCK_LOT',
+          referenceId: lot.id,
+          note: this.formatAdjustmentNote(
+            dto.reason,
+            dto.note,
+            currentOnHand,
+            nextOnHand,
+          ),
+        },
+      });
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: lot.warehouse.branchId ?? null,
+        entityType: 'StockLot',
+        entityId: lot.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          op: 'adjust',
+          reason: dto.reason,
+          note: dto.note ?? null,
+          previousQuantityOnHand: currentOnHand,
+          nextQuantityOnHand: nextOnHand,
+          delta,
+          previousStatus: lot.status,
+          nextStatus,
+        },
+      });
+
+      return tx.stockLot.findUniqueOrThrow({
+        where: { id },
+        include: STOCK_LOT_INCLUDE,
+      });
+    });
+  }
+
+  async quarantine(
+    user: AuthenticatedUser,
+    id: string,
+    reason: string,
+  ): Promise<StockLotWithRelations> {
+    return this.prisma.$transaction(async (tx) => {
+      const lot = await tx.stockLot.findUnique({
+        where: { id },
+        include: { warehouse: { select: { branchId: true } } },
+      });
+      if (!lot) throw new NotFoundException('Stock lot not found');
+      if (
+        lot.status === StockLotStatus.EXPIRED ||
+        lot.status === StockLotStatus.DISCARDED
+      ) {
+        throw new BadRequestException(`Cannot quarantine a ${lot.status} lot`);
+      }
+      if (lot.status === StockLotStatus.QUARANTINED) {
+        throw new BadRequestException('Lot is already quarantined');
+      }
+
+      await tx.stockLot.update({
+        where: { id },
+        data: { status: StockLotStatus.QUARANTINED },
+      });
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: lot.warehouse.branchId ?? null,
+        entityType: 'StockLot',
+        entityId: lot.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          op: 'quarantine',
+          reason,
+          previousStatus: lot.status,
+          nextStatus: StockLotStatus.QUARANTINED,
+        },
+      });
+
+      return tx.stockLot.findUniqueOrThrow({
+        where: { id },
+        include: STOCK_LOT_INCLUDE,
+      });
+    });
+  }
+
+  async dispose(
+    user: AuthenticatedUser,
+    id: string,
+    reason: string,
+  ): Promise<StockLotWithRelations> {
+    return this.prisma.$transaction(async (tx) => {
+      const lot = await tx.stockLot.findUnique({
+        where: { id },
+        include: { warehouse: { select: { branchId: true } } },
+      });
+      if (!lot) throw new NotFoundException('Stock lot not found');
+      if (lot.status === StockLotStatus.DISCARDED) {
+        throw new BadRequestException('Lot is already discarded');
+      }
+
+      const quantityOnHand = this.decToNum(lot.quantityOnHand);
+      await tx.stockLot.update({
+        where: { id },
+        data: {
+          quantityOnHand: new Prisma.Decimal(0),
+          status: StockLotStatus.DISCARDED,
+        },
+      });
+
+      if (quantityOnHand > 0) {
+        await tx.stockMovement.create({
+          data: {
+            stockLotId: lot.id,
+            warehouseId: lot.warehouseId,
+            createdByUserId: user.id,
+            type: StockMovementType.DISCARD,
+            quantityDelta: new Prisma.Decimal(-quantityOnHand),
+            unitCost: lot.unitCost,
+            referenceType: 'STOCK_LOT',
+            referenceId: lot.id,
+            note: reason,
+          },
+        });
+      }
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: lot.warehouse.branchId ?? null,
+        entityType: 'StockLot',
+        entityId: lot.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          op: 'dispose',
+          reason,
+          discardedQuantity: quantityOnHand,
+          previousStatus: lot.status,
+          nextStatus: StockLotStatus.DISCARDED,
+        },
+      });
+
+      return tx.stockLot.findUniqueOrThrow({
+        where: { id },
+        include: STOCK_LOT_INCLUDE,
+      });
+    });
+  }
+
   // ───────────────────────── helpers ─────────────────────────
+  private assertMutableLot(status: StockLotStatus) {
+    if (
+      status === StockLotStatus.EXPIRED ||
+      status === StockLotStatus.DISCARDED
+    ) {
+      throw new BadRequestException(`Cannot change a ${status} lot`);
+    }
+  }
+
+  private statusAfterAdjustment(
+    currentStatus: StockLotStatus,
+    nextOnHand: number,
+  ): StockLotStatus {
+    if (nextOnHand === 0) {
+      return currentStatus === StockLotStatus.QUARANTINED
+        ? StockLotStatus.QUARANTINED
+        : StockLotStatus.EXHAUSTED;
+    }
+    return currentStatus === StockLotStatus.QUARANTINED
+      ? StockLotStatus.QUARANTINED
+      : StockLotStatus.ACTIVE;
+  }
+
+  private formatAdjustmentNote(
+    reason: StockAdjustmentReason,
+    note: string | undefined,
+    previousQuantity: number,
+    nextQuantity: number,
+  ) {
+    const detail = note?.trim();
+    return [
+      `Adjustment ${reason}`,
+      `(on-hand ${previousQuantity} -> ${nextQuantity})`,
+      detail ? `- ${detail}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  private decToNum(value: Prisma.Decimal | number) {
+    return typeof value === 'number' ? value : Number(value);
+  }
+
+  private round6(value: number) {
+    return Math.round(value * 1_000_000) / 1_000_000;
+  }
+
   private expiresAtFilter(
     from: string | undefined,
     to: string | undefined,

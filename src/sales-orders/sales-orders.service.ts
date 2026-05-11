@@ -26,7 +26,30 @@ const ORDER_INCLUDE = {
   items: {
     orderBy: { createdAt: 'asc' },
     include: {
-      service: { select: { id: true, code: true, name: true } },
+      service: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          isProgram: true,
+          defaultSessions: true,
+        },
+      },
+    },
+  },
+  payments: {
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      amount: true,
+      paymentMethod: true,
+      paymentType: true,
+      status: true,
+      paidAt: true,
+      createdAt: true,
+      updatedAt: true,
+      note: true,
+      createdByUserId: true,
     },
   },
 } satisfies Prisma.SalesOrderInclude;

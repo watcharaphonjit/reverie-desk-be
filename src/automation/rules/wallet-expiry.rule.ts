@@ -93,7 +93,7 @@ export class WalletExpiryRule implements AutomationRule {
       const days = Math.ceil((exp.getTime() - now.getTime()) / 86_400_000);
       const result = await this.notifications.notifyMany(recipients, {
         title: `Wallet credit expiring: ${t.wallet.customer.fullName}`,
-        message: `${t.amount} credit for ${t.wallet.customer.fullName} expires in ${days}d.`,
+        message: `${t.amount.toString()} credit for ${t.wallet.customer.fullName} expires in ${days}d.`,
         type: NotificationType.WALLET_EXPIRY,
         branchId,
         metadata: {

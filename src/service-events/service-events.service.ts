@@ -34,7 +34,14 @@ const EVENT_INCLUDE = {
   doctorUser: { select: { id: true, fullName: true, email: true } },
   employeeUser: { select: { id: true, fullName: true, email: true } },
   appointment: {
-    select: { id: true, appointmentNo: true, status: true, scheduledAt: true },
+    select: {
+      id: true,
+      appointmentNo: true,
+      status: true,
+      scheduledAt: true,
+      entitlementId: true,
+      entitlementConsumedAt: true,
+    },
   },
   salesOrder: { select: { id: true, orderNo: true, status: true } },
   stockUsages: {

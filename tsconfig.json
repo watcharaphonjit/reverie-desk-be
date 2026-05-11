@@ -19,7 +19,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "strict": true,
-    "ignoreDeprecations": "5.0"
-  }
+    "strict": true
+  },
+  "exclude": ["node_modules", "dist", "test", "scripts"]
 }

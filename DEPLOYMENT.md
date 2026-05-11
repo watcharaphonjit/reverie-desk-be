@@ -202,7 +202,7 @@ Workers run in a separate process via `npm run worker`. In small deployments you
 Verify a fresh deploy against the running API:
 
 ```bash
-export BASE_URL=http://localhost:3000/api/v1
+export BASE_URL=http://localhost:3001/api/v1
 export THROTTLE_DISABLED=true   # CI / smoke only
 npm run test:smoke              # runs all six end-to-end smokes
 ```

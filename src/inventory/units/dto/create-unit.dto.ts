@@ -16,7 +16,7 @@ export class CreateUnitDto {
   @Matches(/^[A-Za-z0-9_-]+$/, {
     message: 'code may contain letters, digits, underscore, hyphen only',
   })
-  @Transform(({ value }) =>
+  @Transform(({ value }): unknown =>
     typeof value === 'string' ? value.toUpperCase().trim() : value,
   )
   code!: string;

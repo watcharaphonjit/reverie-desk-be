@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import {
   Logger,
-  RequestMethod,
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
@@ -68,15 +67,10 @@ async function bootstrap(): Promise<void> {
       }),
     );
 
-    // Mount everything at /api/v1, leaving /health/* and /api/docs at root.
-    // URI versioning keeps the door open for v2 additions without breaking
-    // existing consumers — new controllers just declare @Controller({ version: '2' }).
-    app.setGlobalPrefix('api', {
-      exclude: [
-        { path: 'health', method: RequestMethod.ALL },
-        { path: 'health/(.*)', method: RequestMethod.ALL },
-      ],
-    });
+    // Mount everything at /api/v1. URI versioning keeps the door open for v2
+    // additions without breaking existing consumers — new controllers just
+    // declare @Controller({ version: '2' }).
+    app.setGlobalPrefix('api');
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
     const docs = new DocumentBuilder()

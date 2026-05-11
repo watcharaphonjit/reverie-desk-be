@@ -71,7 +71,11 @@ const ORDER_BLOCKED_FOR_BOOKING: ReadonlyArray<SalesOrderStatus> = [
 const ALLOWED_TRANSITIONS: Readonly<
   Record<AppointmentStatus, ReadonlyArray<AppointmentStatus>>
 > = {
-  BOOKED: [AppointmentStatus.CHECKED_IN, AppointmentStatus.CANCELLED],
+  BOOKED: [
+    AppointmentStatus.CHECKED_IN,
+    AppointmentStatus.CANCELLED,
+    AppointmentStatus.NO_SHOW,
+  ],
   CHECKED_IN: [AppointmentStatus.COMPLETED],
   COMPLETED: [],
   CANCELLED: [],
@@ -282,6 +286,16 @@ export class AppointmentsService {
     reason?: string,
   ): Promise<AppointmentWithRelations> {
     return this.transition(user, id, AppointmentStatus.CANCELLED, {
+      reason,
+    });
+  }
+
+  noShow(
+    user: AuthenticatedUser,
+    id: string,
+    reason?: string,
+  ): Promise<AppointmentWithRelations> {
+    return this.transition(user, id, AppointmentStatus.NO_SHOW, {
       reason,
     });
   }

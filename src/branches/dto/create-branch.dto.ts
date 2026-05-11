@@ -6,7 +6,7 @@ export class CreateBranchDto {
   @IsString()
   @MinLength(2)
   @MaxLength(20)
-  @Transform(({ value }) =>
+  @Transform(({ value }): unknown =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,
   )
   @Matches(/^[A-Z0-9_-]+$/, {

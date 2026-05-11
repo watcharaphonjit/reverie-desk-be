@@ -14,9 +14,10 @@ export class SmsNotificationProvider implements NotificationChannelProvider {
   readonly channel = NotificationChannel.SMS;
   private readonly logger = new Logger(SmsNotificationProvider.name);
 
-  async dispatch(input: NotificationDispatchInput): Promise<void> {
+  dispatch(input: NotificationDispatchInput): Promise<void> {
     this.logger.log(
       `[SMS stub] notif=${input.notificationId} user=${input.userId} type=${input.type} title="${input.title}"`,
     );
+    return Promise.resolve();
   }
 }

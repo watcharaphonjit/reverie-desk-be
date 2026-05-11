@@ -48,8 +48,8 @@ export class CommissionEligibleRule implements AutomationRule {
       const result = await this.notifications.notify({
         userId: c.recipientUserId,
         branchId: c.salesOrder.branchId,
-        title: `Commission eligible: ${c.amount}`,
-        message: `Your ${c.type.replaceAll('_', ' ').toLowerCase()} commission of ${c.amount} on order ${c.salesOrder.orderNo} is eligible.`,
+        title: `Commission eligible: ${c.amount.toString()}`,
+        message: `Your ${c.type.replaceAll('_', ' ').toLowerCase()} commission of ${c.amount.toString()} on order ${c.salesOrder.orderNo} is eligible.`,
         type: NotificationType.COMMISSION_ELIGIBLE,
         metadata: {
           commissionId: c.id,

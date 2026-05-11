@@ -23,6 +23,7 @@ import {
   CancelAppointmentDto,
   CheckInAppointmentDto,
   CompleteAppointmentDto,
+  NoShowAppointmentDto,
   RescheduleAppointmentDto,
 } from './dto/reschedule-appointment.dto';
 
@@ -84,6 +85,16 @@ export class AppointmentsController {
     @Body() dto: CancelAppointmentDto,
   ) {
     return this.appointments.cancel(user, id, dto.reason);
+  }
+
+  @Patch(':id/no-show')
+  @HttpCode(HttpStatus.OK)
+  noShow(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: NoShowAppointmentDto,
+  ) {
+    return this.appointments.noShow(user, id, dto.reason);
   }
 
   @Patch(':id/reschedule')

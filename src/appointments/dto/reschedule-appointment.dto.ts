@@ -21,6 +21,13 @@ export class CancelAppointmentDto {
   reason?: string;
 }
 
+export class NoShowAppointmentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class CheckInAppointmentDto {
   @IsOptional()
   @IsString()

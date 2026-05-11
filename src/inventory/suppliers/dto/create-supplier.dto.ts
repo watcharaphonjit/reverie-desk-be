@@ -13,7 +13,7 @@ export class CreateSupplierDto {
   @MinLength(2)
   @MaxLength(32)
   @Matches(/^[A-Za-z0-9_-]+$/)
-  @Transform(({ value }) =>
+  @Transform(({ value }): unknown =>
     typeof value === 'string' ? value.toUpperCase().trim() : value,
   )
   code!: string;

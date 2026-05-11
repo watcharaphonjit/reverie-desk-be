@@ -36,8 +36,11 @@ import { PurchaseReceiptsModule } from './inventory/purchase-receipts/purchase-r
 import { StockLotsModule } from './inventory/stock-lots/stock-lots.module';
 import { OpenedContainersModule } from './inventory/opened-containers/opened-containers.module';
 import { StockTransfersModule } from './inventory/stock-transfers/stock-transfers.module';
+import { StockMovementsModule } from './inventory/stock-movements/stock-movements.module';
+import { WarehousesModule } from './inventory/warehouses/warehouses.module';
 import { ExpirySweepModule } from './inventory/expiry-sweep/expiry-sweep.module';
 import { BranchStockSalesModule } from './sales/branch-stock-sales/branch-stock-sales.module';
+import { ServicesModule } from './services/services.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { RefundsModule } from './refunds/refunds.module';
 import { WalletModule } from './wallet/wallet.module';
@@ -96,11 +99,14 @@ import { JobsModule } from './jobs/jobs.module';
     StockItemsModule,
     SuppliersModule,
     PurchaseReceiptsModule,
+    WarehousesModule,
     StockLotsModule,
+    StockMovementsModule,
     OpenedContainersModule,
     StockTransfersModule,
     ExpirySweepModule,
     BranchStockSalesModule,
+    ServicesModule,
     WalletModule,
     CommissionsModule,
     RefundsModule,

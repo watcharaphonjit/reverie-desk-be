@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,7 +14,9 @@ import { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AdjustStockLotDto } from './dto/adjust-stock-lot.dto';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
+import { StockLotActionDto } from './dto/stock-lot-action.dto';
 import {
   ExpiringStockLotQueryDto,
   StockLotQueryDto,
@@ -31,6 +34,12 @@ const READ_ROLES = [
 const WRITE_ROLES = [
   'ADMIN',
   'SUPER_BRANCH_MANAGER',
+  'CENTRAL_STOCK_HUB',
+] as const;
+const ACTION_ROLES = [
+  'ADMIN',
+  'SUPER_BRANCH_MANAGER',
+  'BRANCH_MANAGER',
   'CENTRAL_STOCK_HUB',
 ] as const;
 
@@ -68,5 +77,35 @@ export class StockLotsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.stockLots.findOne(id);
+  }
+
+  @Post(':id/adjust')
+  @Roles(...ACTION_ROLES)
+  adjust(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AdjustStockLotDto,
+  ) {
+    return this.stockLots.adjust(user, id, dto);
+  }
+
+  @Patch(':id/quarantine')
+  @Roles(...ACTION_ROLES)
+  quarantine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: StockLotActionDto,
+  ) {
+    return this.stockLots.quarantine(user, id, dto.reason);
+  }
+
+  @Patch(':id/dispose')
+  @Roles(...ACTION_ROLES)
+  dispose(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: StockLotActionDto,
+  ) {
+    return this.stockLots.dispose(user, id, dto.reason);
   }
 }

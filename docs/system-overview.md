@@ -92,7 +92,7 @@ A full deployment runs **four logical processes**:
 ```mermaid
 graph LR
     subgraph "Reverie Desk Runtime"
-        API["API process<br/>node dist/src/main.js<br/>port 3000"]
+        API["API process<br/>node dist/src/main.js<br/>port 3001"]
         WORKER["Worker process<br/>node dist/src/worker.js<br/>BullMQ consumers"]
         PG[("PostgreSQL<br/>application DB")]
         REDIS[("Redis<br/>cache + BullMQ broker")]
@@ -132,7 +132,7 @@ Notes:
 npm install
 npx prisma migrate dev          # runs all migrations under prisma/migrations/
 npm run seed                    # roles + permissions + admin user + base branch/warehouses
-npm run start:dev               # API on :3000 with hot reload
+npm run start:dev               # API on :3001 with hot reload
 npm run worker:dev              # Optional: BullMQ workers in a separate terminal
 ```
 
@@ -163,7 +163,7 @@ Joi-validated env vars (`src/config/env.validation.ts`):
 | Var | Required | Default | Notes |
 |---|---|---|---|
 | `NODE_ENV` | no | `development` | one of `development`/`staging`/`production`/`test` |
-| `PORT` | no | `3000` | |
+| `PORT` | no | `3001` | |
 | `DATABASE_URL` | **yes** | — | `postgres://` URI |
 | `JWT_SECRET` | **yes** | — | min 16 chars |
 | `JWT_EXPIRES_IN` | **yes** | — | e.g. `12h` |

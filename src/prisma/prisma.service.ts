@@ -15,13 +15,20 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private static readonly transactionOptions = {
+    maxWait: 10_000,
+    timeout: 20_000,
+  } as const;
 
   constructor() {
     const url = env('DATABASE_URL');
     if (!url) {
       throw new Error('DATABASE_URL is not set');
     }
-    super({ adapter: new PrismaPg(url) });
+    super({
+      adapter: new PrismaPg(url),
+      transactionOptions: PrismaService.transactionOptions,
+    });
   }
 
   async onModuleInit(): Promise<void> {

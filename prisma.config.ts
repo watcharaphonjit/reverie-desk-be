@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { defineConfig } from 'prisma/config';
+import { defineConfig, env } from 'prisma/config';
 
 /**
  * Prisma 7 changed two things that interact badly during a Docker
@@ -24,7 +24,7 @@ import { defineConfig } from 'prisma/config';
  * The application's `PrismaClient` uses `@prisma/adapter-pg` and reads
  * `DATABASE_URL` from `process.env` at runtime, independent of this file.
  */
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = env('DATABASE_URL');
 
 export default defineConfig({
   schema: './prisma/schema.prisma',

@@ -52,7 +52,7 @@ export class RefundApprovalRule implements AutomationRule {
       if (recipients.length === 0) continue;
       const result = await this.notifications.notifyMany(recipients, {
         title: `Refund needs approval: ${refund.refundNo}`,
-        message: `Refund ${refund.refundNo} for ${refund.amount} on order ${refund.salesOrder.orderNo} is awaiting approval.`,
+        message: `Refund ${refund.refundNo} for ${refund.amount.toString()} on order ${refund.salesOrder.orderNo} is awaiting approval.`,
         type: NotificationType.REFUND_REQUEST,
         branchId: refund.salesOrder.branchId,
         metadata: {

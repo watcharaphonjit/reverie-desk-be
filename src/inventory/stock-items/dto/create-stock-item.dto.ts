@@ -19,7 +19,7 @@ export class CreateStockItemDto {
   @Matches(/^[A-Za-z0-9_-]+$/, {
     message: 'sku may contain letters, digits, underscore, hyphen only',
   })
-  @Transform(({ value }) =>
+  @Transform(({ value }): unknown =>
     typeof value === 'string' ? value.toUpperCase().trim() : value,
   )
   sku!: string;

@@ -15,9 +15,10 @@ export class EmailNotificationProvider implements NotificationChannelProvider {
   readonly channel = NotificationChannel.EMAIL;
   private readonly logger = new Logger(EmailNotificationProvider.name);
 
-  async dispatch(input: NotificationDispatchInput): Promise<void> {
+  dispatch(input: NotificationDispatchInput): Promise<void> {
     this.logger.log(
       `[EMAIL stub] notif=${input.notificationId} user=${input.userId} type=${input.type} title="${input.title}"`,
     );
+    return Promise.resolve();
   }
 }

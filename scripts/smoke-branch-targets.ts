@@ -15,7 +15,7 @@
  *   ✓ Branch-scoped role attempting another branch → 403
  *   ✓ PATCH category replace + sum re-validation
  *
- * Run: BASE_URL=http://localhost:3000/api/v1 tsx scripts/smoke-branch-targets.ts
+ * Run: BASE_URL=http://localhost:3001/api/v1 tsx scripts/smoke-branch-targets.ts
  */
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -25,7 +25,7 @@ import {
   ServiceGroupCode,
 } from '@prisma/client';
 
-const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3001';
 
 interface ApiSuccess<T> {
   success: true;

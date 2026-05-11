@@ -628,8 +628,9 @@ export class BranchStockSalesService {
   async approveRefund(
     user: AuthenticatedUser,
     refundId: string,
-    _dto: ApproveRefundDto,
+    dto: ApproveRefundDto,
   ): Promise<RefundWithRelations> {
+    void dto;
     return this.prisma.$transaction(async (tx) => {
       const refund = await tx.branchStockSaleRefund.findUnique({
         where: { id: refundId },

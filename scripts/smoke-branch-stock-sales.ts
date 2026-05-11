@@ -24,7 +24,7 @@ import {
   WarehouseType,
 } from '@prisma/client';
 
-const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3001';
 
 interface ApiSuccess<T> {
   success: true;
@@ -255,18 +255,24 @@ async function main(): Promise<void> {
   expect(create.status === 201, 'create DRAFT returns 201');
   const sale = unwrap(create);
   expect(sale.status === 'DRAFT', 'sale status = DRAFT');
-  expect(/^BSS-\d{8}-\d{4}$/.test(sale.saleNo), 'saleNo format BSS-YYYYMMDD-####');
+  expect(
+    /^BSS-\d{8}-\d{4}$/.test(sale.saleNo),
+    'saleNo format BSS-YYYYMMDD-####',
+  );
   expect(sale.items.length === 2, 'FEFO split into 2 sale items');
   // Order check: lotA first (earlier expiry), lotB second.
   const itemForLotA = sale.items.find((i) => i.stockLotId === lotA.id);
   const itemForLotB = sale.items.find((i) => i.stockLotId === lotB.id);
   expect(!!itemForLotA && !!itemForLotB, 'both lot ids present in sale items');
-  expect(decToNum(itemForLotA!.quantity) === 30, 'lotA contributed 30 (FEFO first)');
-  expect(decToNum(itemForLotB!.quantity) === 20, 'lotB contributed remaining 20');
   expect(
-    decToNum(sale.subtotalAmount) === 1000,
-    'subtotal = 50 * 20 = 1000',
+    decToNum(itemForLotA!.quantity) === 30,
+    'lotA contributed 30 (FEFO first)',
   );
+  expect(
+    decToNum(itemForLotB!.quantity) === 20,
+    'lotB contributed remaining 20',
+  );
+  expect(decToNum(sale.subtotalAmount) === 1000, 'subtotal = 50 * 20 = 1000');
   // Spec §1: subtotal = sum(item.netAmount); total = subtotal - discount.
   const sumOfNet = sale.items.reduce(
     (acc, it) => round2cents(acc + decToNum(it.netAmount)),
@@ -278,7 +284,9 @@ async function main(): Promise<void> {
   );
   expect(
     decToNum(sale.totalAmount) ===
-      round2cents(decToNum(sale.subtotalAmount) - decToNum(sale.discountAmount)),
+      round2cents(
+        decToNum(sale.subtotalAmount) - decToNum(sale.discountAmount),
+      ),
     'totalAmount === subtotalAmount - discountAmount',
   );
   expect(
@@ -301,7 +309,9 @@ async function main(): Promise<void> {
     {
       branchId: branch.id,
       salesChannelId: salesChannel.id,
-      items: [{ stockItemId: sellableItem.id, quantity: 999_999, unitPrice: 1 }],
+      items: [
+        { stockItemId: sellableItem.id, quantity: 999_999, unitPrice: 1 },
+      ],
     },
     token,
   );
@@ -380,10 +390,7 @@ async function main(): Promise<void> {
     decToNum(lotBAfter!.quantityOnHand) === 80,
     'lotB debited by 20 → 80 remaining',
   );
-  expect(
-    lotBAfter!.status === StockLotStatus.ACTIVE,
-    'lotB still ACTIVE',
-  );
+  expect(lotBAfter!.status === StockLotStatus.ACTIVE, 'lotB still ACTIVE');
 
   const movements = await prisma.stockMovement.findMany({
     where: {
@@ -477,7 +484,12 @@ async function main(): Promise<void> {
 
   // Sale should now be PARTIALLY_REFUNDED with refundAmount = 200.
   const saleAfterPartial = unwrap(
-    await call<SaleResp>('GET', `/branch-stock-sales/${sale.id}`, undefined, token),
+    await call<SaleResp>(
+      'GET',
+      `/branch-stock-sales/${sale.id}`,
+      undefined,
+      token,
+    ),
   );
   expect(
     saleAfterPartial.status === 'PARTIALLY_REFUNDED',
@@ -519,7 +531,12 @@ async function main(): Promise<void> {
   );
 
   const saleFinal = unwrap(
-    await call<SaleResp>('GET', `/branch-stock-sales/${sale.id}`, undefined, token),
+    await call<SaleResp>(
+      'GET',
+      `/branch-stock-sales/${sale.id}`,
+      undefined,
+      token,
+    ),
   );
   expect(saleFinal.status === 'REFUNDED', 'sale → REFUNDED after full refund');
   expect(
@@ -537,10 +554,7 @@ async function main(): Promise<void> {
     },
     token,
   );
-  expect(
-    overRefund.status === 409,
-    'refunding a REFUNDED sale → 409',
-  );
+  expect(overRefund.status === 409, 'refunding a REFUNDED sale → 409');
 
   // ── 11b. Cannot refund more than originally sold (mid-cycle) ──
   // Build a fresh sale, complete it, then over-refund a single line.
