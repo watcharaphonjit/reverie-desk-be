@@ -46,8 +46,11 @@ export class CommissionRulesController {
 
   @Get()
   @ApiOperation({ summary: 'List commission tier rules with filters' })
-  findAll(@Query() query: CommissionRuleQueryDto) {
-    return this.rules.findAll(query);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CommissionRuleQueryDto,
+  ) {
+    return this.rules.findAll(user, query);
   }
 
   /**

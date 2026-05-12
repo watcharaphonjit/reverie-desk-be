@@ -12,6 +12,10 @@ import {
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { BranchesService } from '../branches/branches.service';
+import {
+  assertBranchAccess,
+  scopedBranchFilter,
+} from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
 import { composeFullName } from '../common/utils/name';
@@ -36,6 +40,7 @@ export class CustomerService {
     if (dto.phone) await this.assertPhoneAvailable(dto.phone);
     if (dto.email) await this.assertEmailAvailable(dto.email);
     if (dto.currentBranchId) {
+      assertBranchAccess(user, dto.currentBranchId);
       await this.branches.validateBranchActive(dto.currentBranchId);
     }
 
@@ -86,13 +91,19 @@ export class CustomerService {
   }
 
   // ───────────────────────── list ─────────────────────────
-  async findAll(query: CustomerQueryDto): Promise<PaginatedResult<Customer>> {
+  async findAll(
+    user: AuthenticatedUser,
+    query: CustomerQueryDto,
+  ): Promise<PaginatedResult<Customer>> {
     const page = query.page;
     const limit = query.limit;
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
 
     const where: Prisma.CustomerWhereInput = {
       deletedAt: null,
-      currentBranchId: query.branchId,
+      currentBranchId: query.branchId ?? scopedBranchFilter(user),
       ...(query.search
         ? {
             OR: [
@@ -130,7 +141,7 @@ export class CustomerService {
    * keep a denormalized cache in sync with sales / service-event
    * mutations across multiple modules.
    */
-  async findOne(id: string) {
+  async findOne(user: AuthenticatedUser, id: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id },
       include: {
@@ -140,6 +151,7 @@ export class CustomerService {
     if (!customer || customer.deletedAt) {
       throw new NotFoundException('Customer not found');
     }
+    assertBranchAccess(user, customer.currentBranchId);
 
     // Three independent aggregates, dispatched in parallel:
     //  1. Total spend = sum of paid/completed sales-order totals.
@@ -185,6 +197,7 @@ export class CustomerService {
     dto: UpdateCustomerDto,
   ): Promise<Customer> {
     const existing = await this.requireActive(id);
+    assertBranchAccess(user, existing.currentBranchId);
 
     if (dto.phone && dto.phone !== existing.phone) {
       await this.assertPhoneAvailable(dto.phone, id);
@@ -196,6 +209,7 @@ export class CustomerService {
       dto.currentBranchId &&
       dto.currentBranchId !== existing.currentBranchId
     ) {
+      assertBranchAccess(user, dto.currentBranchId);
       await this.branches.validateBranchActive(dto.currentBranchId);
     }
 
@@ -233,6 +247,7 @@ export class CustomerService {
   // ───────────────────────── soft delete ─────────────────────────
   async remove(user: AuthenticatedUser, id: string): Promise<Customer> {
     const existing = await this.requireActive(id);
+    assertBranchAccess(user, existing.currentBranchId);
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.customer.update({
@@ -258,6 +273,8 @@ export class CustomerService {
     branchId: string,
   ): Promise<Customer> {
     const existing = await this.requireActive(id);
+    assertBranchAccess(user, existing.currentBranchId);
+    assertBranchAccess(user, branchId);
     await this.branches.validateBranchActive(branchId);
 
     if (existing.currentBranchId === branchId) {

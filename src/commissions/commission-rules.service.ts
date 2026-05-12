@@ -13,6 +13,10 @@ import {
   ServiceGroupCode,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
+import {
+  assertBranchAccess,
+  scopedBranchFilter,
+} from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,8 +70,13 @@ export class CommissionRulesService {
 
   // ─────────────────────────── LIST ───────────────────────────
   async findAll(
+    user: AuthenticatedUser,
     query: CommissionRuleQueryDto,
   ): Promise<PaginatedResult<RuleWithRelations>> {
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    const branchScope = query.branchId ?? scopedBranchFilter(user);
     const where: Prisma.CommissionRuleWhereInput = {
       // Tier rows always have a serviceGroupCode set; non-tier legacy rows
       // (role-scoped, no group) leak through unless we filter explicitly.
@@ -76,7 +85,7 @@ export class CommissionRulesService {
       serviceGroupCode: query.serviceGroupCode
         ? query.serviceGroupCode
         : { not: null },
-      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(branchScope ? { branchId: branchScope } : {}),
       ...(query.commissionType ? { commissionType: query.commissionType } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
     };
@@ -123,6 +132,7 @@ export class CommissionRulesService {
     // Pre-flight validation so we fail before opening the tx.
     for (const [idx, bundle] of dto.bundles.entries()) {
       assertTiersValid(bundle.tiers, idx);
+      assertBranchAccess(user, bundle.branchId);
     }
     // Cross-bundle: same (branchId, group, commissionType) twice is invalid
     // (would be a self-overwrite within one request). Reject loudly.
@@ -257,6 +267,7 @@ export class CommissionRulesService {
     user: AuthenticatedUser,
     dto: CreateCommissionRuleDto,
   ): Promise<RuleWithRelations> {
+    assertBranchAccess(user, dto.branchId);
     if (dto.valueType === CommissionValueType.PERCENTAGE && dto.value > 1) {
       throw new BadRequestException('PERCENTAGE value must be ≤ 1 (e.g. 0.05)');
     }
@@ -346,8 +357,15 @@ export class CommissionRulesService {
   ): Promise<RuleWithRelations> {
     const existing = await this.prisma.commissionRule.findUnique({
       where: { id },
+      select: {
+        branchId: true,
+        isActive: true,
+        serviceGroupCode: true,
+        commissionType: true,
+      },
     });
     if (!existing) throw new NotFoundException('Commission rule not found');
+    assertBranchAccess(user, existing.branchId);
 
     if (dto.valueType !== undefined && dto.value === undefined) {
       throw new BadRequestException(
@@ -442,6 +460,7 @@ export class CommissionRulesService {
       select: { id: true, isActive: true, branchId: true },
     });
     if (!existing) throw new NotFoundException('Commission rule not found');
+    assertBranchAccess(user, existing.branchId);
     if (!existing.isActive) {
       // Idempotent — silently succeed if already inactive.
       return { id, isActive: false };
@@ -484,6 +503,7 @@ export class CommissionRulesService {
       },
     });
     if (!order) throw new NotFoundException('Sales order not found');
+    assertBranchAccess(user, order.branchId);
 
     // Bucket items by group, summing their netAmount.
     const groupBuckets = new Map<
@@ -566,7 +586,6 @@ export class CommissionRulesService {
       });
     }
 
-    void user; // for future authz hooks
     return {
       salesOrderId: order.id,
       branchId: order.branchId,

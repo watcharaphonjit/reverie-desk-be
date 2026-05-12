@@ -17,20 +17,22 @@ export class ConvertLeadDto {
   @MaxLength(20)
   title?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(80)
-  firstName!: string;
+  firstName?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(80)
   middleName?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(80)
-  lastName!: string;
+  lastName?: string;
 
   @IsOptional()
   @IsString()

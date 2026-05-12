@@ -5,19 +5,28 @@ import {
   PaymentStatus,
   Prisma,
   RefundStatus,
+  ServiceGroupCode,
   ServiceEventStatus,
   StockMovementType,
+  WarehouseType,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
-import { scopedBranchFilter } from '../common/authz/branch-scope';
+import {
+  assertBranchAccess,
+  scopedBranchFilter,
+} from '../common/authz/branch-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppointmentsReportQueryDto } from './dto/appointments-report-query.dto';
 import { CommissionsReportQueryDto } from './dto/commissions-report-query.dto';
 import { InventoryReportQueryDto } from './dto/inventory-report-query.dto';
 import { PaymentsReportQueryDto } from './dto/payments-report-query.dto';
+import { RefundsReportQueryDto } from './dto/refunds-report-query.dto';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { ServiceEventsReportQueryDto } from './dto/service-events-report-query.dto';
+import { TargetsReportQueryDto } from './dto/targets-report-query.dto';
 import { WalletsReportQueryDto } from './dto/wallets-report-query.dto';
+import { quarterRangeUTC, progressPercent } from '../targets/quarter.util';
+import { TargetProgressService } from '../targets/target-progress.service';
 
 const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
   if (v == null) return 0;
@@ -37,7 +46,10 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  */
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly targetProgress: TargetProgressService,
+  ) {}
 
   // ────────────────────────────── A. Sales ──────────────────────────────
 
@@ -448,11 +460,15 @@ export class ReportsService {
   // ────────────────────────── E. Inventory ──────────────────────────
 
   async inventory(user: AuthenticatedUser, query: InventoryReportQueryDto) {
+    const warehouseScope = await this.scopedWarehouseFilter(
+      user,
+      query.warehouseId,
+    );
     const where: Prisma.StockMovementWhereInput = {
       ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
       ...(query.movementType ? { type: query.movementType } : {}),
       ...this.dateRangeFilter(query.startDate, query.endDate, 'createdAt'),
-      ...this.scopedWarehouseFilter(user, query.warehouseId),
+      ...warehouseScope,
       ...(query.stockItemId
         ? { stockLot: { stockItemId: query.stockItemId } }
         : {}),
@@ -671,21 +687,21 @@ export class ReportsService {
   // ────────────────────────── G. Wallets ──────────────────────────
 
   async wallets(user: AuthenticatedUser, query: WalletsReportQueryDto) {
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    const branchScope = query.branchId ?? scopedBranchFilter(user);
     const txnWhere: Prisma.WalletTransactionWhereInput = {
       ...this.dateRangeFilter(query.startDate, query.endDate, 'createdAt'),
-      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(branchScope ? { branchId: branchScope } : {}),
       ...(query.customerId ? { wallet: { customerId: query.customerId } } : {}),
       ...(query.walletType ? { wallet: { type: query.walletType } } : {}),
     };
 
-    const scoped = scopedBranchFilter(user);
-    if (scoped !== undefined && !query.branchId) {
-      txnWhere.branchId = scoped;
-    }
-
     const walletWhere: Prisma.WalletWhereInput = {
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.walletType ? { type: query.walletType } : {}),
+      ...(branchScope ? { customer: { currentBranchId: branchScope } } : {}),
     };
 
     const [byTxnType, totals, walletAgg, walletCount] = await Promise.all([
@@ -739,6 +755,158 @@ export class ReportsService {
         type,
         count: v.count,
         amount: v.amount,
+      })),
+      filters: this.echoFilters(query),
+    };
+  }
+
+  // ────────────────────────── H. Refunds ──────────────────────────
+
+  async refunds(user: AuthenticatedUser, query: RefundsReportQueryDto) {
+    const where: Prisma.RefundWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.refundType ? { refundType: query.refundType } : {}),
+      ...this.dateRangeFilter(query.startDate, query.endDate, 'createdAt'),
+      ...this.scopedRefundSalesOrderFilter(user, query.branchId),
+    };
+
+    const [byStatus, byBranchRows, totals] = await Promise.all([
+      this.prisma.refund.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+      this.prisma.refund.findMany({
+        where,
+        select: {
+          amount: true,
+          status: true,
+          salesOrder: { select: { branchId: true } },
+        },
+      }),
+      this.prisma.refund.aggregate({
+        where,
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const summaryByStatus: Record<
+      RefundStatus,
+      { count: number; amount: number }
+    > = {
+      REQUESTED: { count: 0, amount: 0 },
+      APPROVED: { count: 0, amount: 0 },
+      REJECTED: { count: 0, amount: 0 },
+      COMPLETED: { count: 0, amount: 0 },
+      CANCELLED: { count: 0, amount: 0 },
+    };
+    for (const row of byStatus) {
+      summaryByStatus[row.status] = {
+        count: row._count._all,
+        amount: round2(decToNum(row._sum.amount)),
+      };
+    }
+
+    const byBranch = new Map<string, { count: number; amount: number }>();
+    for (const refund of byBranchRows) {
+      const key = refund.salesOrder.branchId;
+      const current = byBranch.get(key) ?? { count: 0, amount: 0 };
+      current.count += 1;
+      current.amount = round2(current.amount + decToNum(refund.amount));
+      byBranch.set(key, current);
+    }
+    const branchNames = await this.namesForBranches(
+      Array.from(byBranch.keys()),
+    );
+
+    return {
+      summary: {
+        totalRefunds: totals._count._all,
+        totalAmount: round2(decToNum(totals._sum.amount)),
+        ...summaryByStatus,
+      },
+      byBranch: Array.from(byBranch.entries()).map(([branchId, value]) => ({
+        branchId,
+        name: branchNames.get(branchId) ?? null,
+        count: value.count,
+        amount: value.amount,
+      })),
+      filters: this.echoFilters(query),
+    };
+  }
+
+  // ────────────────────────── I. Targets ──────────────────────────
+
+  async targets(user: AuthenticatedUser, query: TargetsReportQueryDto) {
+    const { year, quarter } = this.resolveQuarter(query.year, query.quarter);
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    const branchScope = query.branchId ?? scopedBranchFilter(user);
+    const branches = await this.prisma.branch.findMany({
+      where: {
+        ...(branchScope ? { id: branchScope } : {}),
+      },
+      select: { id: true, name: true, status: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const progress = await Promise.all(
+      branches.map((branch) =>
+        this.targetProgress.getQuarterProgress(user, branch.id, year, quarter),
+      ),
+    );
+
+    const totalsByGroup = new Map<
+      ServiceGroupCode,
+      { target: number; actual: number }
+    >();
+    for (const branch of progress) {
+      for (const category of branch.categories) {
+        const current = totalsByGroup.get(category.group) ?? {
+          target: 0,
+          actual: 0,
+        };
+        current.target = round2(current.target + category.target);
+        current.actual = round2(current.actual + category.actual);
+        totalsByGroup.set(category.group, current);
+      }
+    }
+
+    const totalTarget = round2(
+      progress.reduce((sum, branch) => sum + branch.totalTarget, 0),
+    );
+    const totalActual = round2(
+      progress.reduce((sum, branch) => sum + branch.totalActual, 0),
+    );
+    const { start, end } = quarterRangeUTC(year, quarter);
+
+    return {
+      summary: {
+        year,
+        quarter,
+        totalBranches: progress.length,
+        totalTarget,
+        totalActual,
+        overallProgress: progressPercent(totalActual, totalTarget),
+        rangeStart: start,
+        rangeEnd: end,
+      },
+      byBranch: progress.map((branch) => ({
+        branchId: branch.branchId,
+        name: branch.branch,
+        totalTarget: branch.totalTarget,
+        totalActual: branch.totalActual,
+        overallProgress: branch.overallProgress,
+        ungroupedActual: branch.ungroupedActual,
+      })),
+      byGroup: Array.from(totalsByGroup.entries()).map(([group, value]) => ({
+        group,
+        target: value.target,
+        actual: value.actual,
+        progress: progressPercent(value.actual, value.target),
       })),
       filters: this.echoFilters(query),
     };
@@ -846,23 +1014,18 @@ export class ReportsService {
 
   /**
    * Build a `branchId = ...` clause respecting both the explicit query
-   * filter and the caller's branch scope. Branch-restricted users that
-   * pass another branchId get an empty filter override (`__none__`) so
-   * they see no rows rather than a 403, keeping aggregation endpoints
-   * cheap to compose into dashboards.
+   * filter and the caller's branch scope.
    */
   private scopedBranchClause(
     user: AuthenticatedUser,
     requestedBranchId: string | undefined,
     field: 'branchId' | 'currentBranchId',
   ): Record<string, string> {
-    const scoped = scopedBranchFilter(user);
     if (requestedBranchId) {
-      if (scoped !== undefined && scoped !== requestedBranchId) {
-        return { [field]: '__none__' };
-      }
+      assertBranchAccess(user, requestedBranchId);
       return { [field]: requestedBranchId };
     }
+    const scoped = scopedBranchFilter(user);
     if (scoped !== undefined) return { [field]: scoped };
     return {};
   }
@@ -893,19 +1056,32 @@ export class ReportsService {
     return { salesOrder: branchClause };
   }
 
-  private scopedWarehouseFilter(
+  private async scopedWarehouseFilter(
     user: AuthenticatedUser,
     requestedWarehouseId: string | undefined,
-  ): Prisma.StockMovementWhereInput {
+  ): Promise<Prisma.StockMovementWhereInput> {
     const scoped = scopedBranchFilter(user);
+    if (requestedWarehouseId) {
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: requestedWarehouseId },
+        select: { id: true, branchId: true, type: true },
+      });
+      if (!warehouse) {
+        return { warehouseId: '__none__' };
+      }
+      if (warehouse.type !== WarehouseType.CENTRAL_HUB) {
+        assertBranchAccess(user, warehouse.branchId);
+      }
+      return {};
+    }
     if (scoped === undefined) return {};
     // Stock movements live on warehouses; branch-scoped users see only
-    // movements on warehouses that belong to their branch (or the central
-    // hub stays accessible to all roles).
+    // movements on warehouses that belong to their branch, plus the central
+    // hub which is shared across branches.
     return {
-      warehouse: requestedWarehouseId
-        ? { id: requestedWarehouseId }
-        : { branchId: scoped },
+      warehouse: {
+        OR: [{ branchId: scoped }, { type: WarehouseType.CENTRAL_HUB }],
+      },
     };
   }
 
@@ -953,6 +1129,20 @@ export class ReportsService {
     return Object.fromEntries(
       Object.entries(input).filter(([, v]) => v !== undefined && v !== null),
     );
+  }
+
+  private resolveQuarter(
+    year?: number,
+    quarter?: number,
+  ): { year: number; quarter: number } {
+    if (year && quarter) {
+      return { year, quarter };
+    }
+    const now = new Date();
+    return {
+      year: year ?? now.getUTCFullYear(),
+      quarter: quarter ?? Math.floor(now.getUTCMonth() / 3) + 1,
+    };
   }
 }
 

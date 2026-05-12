@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditLog, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import {
+  assertBranchAccess,
   isUnrestricted,
   scopedBranchFilter,
 } from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditQueryDto } from './dto/audit-query.dto';
+import { AuditSummaryQueryDto } from './dto/audit-summary-query.dto';
 import { UserActivityQueryDto } from './dto/user-activity-query.dto';
 
 const AUDIT_INCLUDE = {
@@ -89,6 +91,67 @@ export class AuditQueryService {
     ]);
 
     return { data, meta: { page, limit, total } };
+  }
+
+  async summary(user: AuthenticatedUser, query: AuditSummaryQueryDto) {
+    const where: Prisma.AuditLogWhereInput = {
+      ...this.dateRangeFilter(query.startDate, query.endDate),
+    };
+
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+      where.branchId = query.branchId;
+    } else {
+      const scoped = scopedBranchFilter(user);
+      if (scoped !== undefined) where.branchId = scoped;
+    }
+
+    const [totalEvents, bucketRows, recentEvents] =
+      await this.prisma.$transaction([
+        this.prisma.auditLog.count({ where }),
+        this.prisma.auditLog.findMany({
+          where,
+          select: {
+            action: true,
+            entityType: true,
+          },
+        }),
+        this.prisma.auditLog.findMany({
+          where,
+          include: AUDIT_INCLUDE,
+          orderBy: { createdAt: 'desc' },
+          take: query.recentLimit ?? 8,
+        }),
+      ]);
+
+    const byActionMap = new Map<AuditAction, number>();
+    const byEntityMap = new Map<string, number>();
+    for (const row of bucketRows) {
+      byActionMap.set(row.action, (byActionMap.get(row.action) ?? 0) + 1);
+      byEntityMap.set(
+        row.entityType,
+        (byEntityMap.get(row.entityType) ?? 0) + 1,
+      );
+    }
+
+    return {
+      summary: {
+        totalEvents,
+        totalLogins: byActionMap.get(AuditAction.LOGIN) ?? 0,
+        totalLogouts: byActionMap.get(AuditAction.LOGOUT) ?? 0,
+      },
+      byAction: Array.from(byActionMap.entries()).map(([action, count]) => ({
+        action,
+        count,
+      })),
+      byEntity: Array.from(byEntityMap.entries())
+        .map((row) => ({
+          entityType: row[0],
+          count: row[1],
+        }))
+        .sort((left, right) => right.count - left.count),
+      recentEvents,
+    };
   }
 
   // ───────────────────────── entity timeline ─────────────────────────

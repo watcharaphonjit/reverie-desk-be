@@ -203,6 +203,9 @@ export class RefundsService {
     user: AuthenticatedUser,
     query: RefundQueryDto,
   ): Promise<PaginatedResult<RefundWithRelations>> {
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
     // Build the salesOrder relation filter explicitly so its branchId
     // constraint is the AND of (a) any caller-provided branchId filter and
     // (b) the caller's own branch when they're branch-scoped. Building the

@@ -41,10 +41,19 @@ enum RoleCode {
 enum LeadStatus {
   NEW
   CONTACTED
+  FOLLOW_UP
   QUALIFIED
   WON
   LOST
   ARCHIVED
+}
+
+enum LeadInteractionType {
+  CALL
+  CHAT
+  NOTE
+  MEETING
+  FOLLOW_UP
 }
 
 enum SalesOrderStatus {
@@ -340,6 +349,7 @@ model User {
   leadsOwned                     Lead[]                  @relation("LeadCurrentOwner")
   leadOwnerAssignmentsTo         LeadOwnerLog[]          @relation("LeadOwnerAssignedTo")
   leadOwnerAssignmentsBy         LeadOwnerLog[]          @relation("LeadOwnerAssignedBy")
+  leadInteractionsCreated        LeadInteraction[]       @relation("LeadInteractionCreatedBy")
   salesOrdersCreated             SalesOrder[]            @relation("SalesOrderCreatedBy")
   paymentsCreated                Payment[]               @relation("PaymentCreatedBy")
   appointmentsAsDoctor           Appointment[]           @relation("AppointmentDoctor")
@@ -532,6 +542,7 @@ model Lead {
   currentOwner        User?                @relation("LeadCurrentOwner", fields: [currentOwnerUserId], references: [id], onDelete: SetNull)
   createdBy           User                 @relation("LeadCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   ownerLogs           LeadOwnerLog[]       @relation("LeadOwnerLogLead")
+  interactions        LeadInteraction[]    @relation("LeadInteractionLead")
   salesOrders         SalesOrder[]         @relation("SalesOrderLead")
   commissionSnapshots CommissionSnapshot[] @relation("CommissionSnapshotLead")
 
@@ -561,6 +572,25 @@ model LeadOwnerLog {
   @@index([assignedToUserId, assignedAt])
   @@index([leadId, endedAt])
   @@map("lead_owner_logs")
+}
+
+model LeadInteraction {
+  id              String              @id @default(cuid())
+  leadId          String
+  type            LeadInteractionType
+  note            String
+  outcome         String?
+  nextActionAt    DateTime?
+  createdByUserId String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  lead      Lead @relation("LeadInteractionLead", fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy User @relation("LeadInteractionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([leadId, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@map("lead_interactions")
 }
 
 model Service {
@@ -1429,4 +1459,44 @@ model BranchQuarterTargetCategory {
   @@unique([targetId, commissionGroup])
   @@index([commissionGroup])
   @@map("branch_quarter_target_categories")
+}
+
+model SystemSetting {
+  key             String   @id
+  value           Json
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model AutomationRuleState {
+  code            String   @id
+  enabled         Boolean
+  updatedByUserId String?
+  lastRunAt       DateTime?
+  lastResult      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("automation_rule_states")
+}
+
+model AutomationRunLog {
+  id                String   @id @default(cuid())
+  code              String
+  triggerSource     String
+  triggeredByUserId String?
+  startedAt         DateTime @default(now())
+  finishedAt        DateTime?
+  success           Boolean?
+  result            Json?
+  note              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([code, startedAt])
+  @@index([triggerSource, startedAt])
+  @@map("automation_run_logs")
 }

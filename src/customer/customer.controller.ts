@@ -40,13 +40,16 @@ export class CustomerController {
   }
 
   @Get()
-  findAll(@Query() query: CustomerQueryDto) {
-    return this.customerService.findAll(query);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CustomerQueryDto,
+  ) {
+    return this.customerService.findAll(user, query);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.customerService.findOne(id);
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.customerService.findOne(user, id);
   }
 
   @Patch(':id')

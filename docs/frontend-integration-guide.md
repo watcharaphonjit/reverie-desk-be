@@ -27,6 +27,7 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
   ```
 - **Validation**: email format; password 8–72 chars.
 - **Response**: `{ accessToken, user: { id, email, fullName, roles[] } }`.
+- **Response**: `{ accessToken, user: { id, email, fullName, branch, roles[], permissions[] } }`.
 - **UI states**: idle → loading → (success: navigate by role landing page) | (error: show inline message; on `429` show "too many attempts, retry in a minute").
 
 ### Profile Screen
@@ -39,30 +40,56 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
 
 - **Route**: `/crm/leads`.
 - **APIs**:
-  - `GET /api/v1/leads?status=&branchId=&ownerUserId=&search=&page=&limit=`
+  - `GET /api/v1/leads?status=&branchId=&ownerId=&search=&page=&limit=`
+  - `GET /api/v1/leads/:id/interactions`
   - `POST /api/v1/leads` (create)
+  - `POST /api/v1/leads/:id/interactions`
   - `POST /api/v1/leads/:id/assign`
   - `PATCH /api/v1/leads/:id/status`
+  - `PATCH /api/v1/leads/interactions/:id`
+  - `DELETE /api/v1/leads/interactions/:id`
   - `POST /api/v1/leads/:id/convert`
 - **Create payload**:
   ```json
   {
-    "name": "Jane Doe",
+    "title": "Khun",
+    "firstName": "Jane",
+    "lastName": "Doe",
     "phone": "+66812345678",
+    "email": "jane@example.com",
+    "lineId": "janedoe",
+    "facebookName": "Jane D",
     "source": "facebook-ad",
+    "channel": "Line OA",
+    "notes": "Interested in hair treatment",
     "branchId": "<branchId>",
     "customerId": null
   }
   ```
-- **Validation**: `name` required (≤120); `phone` Thai format (≤30); `branchId` required; `source` ≤120; optional pre-existing `customerId`.
-- **UI states**: list filterable by status / owner / search. Detail view shows owner log timeline. Convert button only when `status ∈ {NEW, CONTACTED, QUALIFIED}`.
-- **State machine** (badge color): `NEW → CONTACTED → QUALIFIED → WON|LOST|ARCHIVED`.
+- **Validation**: `firstName` + `lastName` required (≤80 each); `phone` Thai format (≤30); `email` valid (≤180); `lineId`, `facebookName`, `source`, `channel` ≤120; `notes` ≤2000; optional pre-existing `customerId`.
+- **UI states**: list filterable by status / owner / search. Detail view shows owner assignment history and interaction timeline.
+- **State machine** (badge color): `NEW → CONTACTED → FOLLOW_UP → QUALIFIED`; `QUALIFIED → LOST`; `QUALIFIED → WON` only via `convert()`.
+
+### Lead Interaction Timeline
+
+- **Route**: shown inside `/crm/leads` detail panel.
+- **Interaction types**: `CALL`, `CHAT`, `NOTE`, `MEETING`, `FOLLOW_UP`.
+- **Create/update payload**:
+  ```json
+  {
+    "type": "FOLLOW_UP",
+    "note": "Called patient and scheduled another touchpoint",
+    "outcome": "Waiting for decision",
+    "nextActionAt": "2026-05-20T10:00:00.000Z"
+  }
+  ```
+- **Behavior**: each interaction is branch-scoped via its parent lead; reads include actor attribution through `createdBy`.
 
 ### Convert Lead Modal
 
 - **API**: `POST /api/v1/leads/:id/convert`
 - **Payload (optional)**: `{ "phone"?: string, "email"?: string }` — used if the lead has no `customerId` and the user wants to match an existing customer.
-- **Result**: lead → `WON`, returns `{ leadId, customerId }`.
+- **Result**: only `QUALIFIED` leads may convert; success sets lead → `WON` and returns `{ leadId, customerId }`.
 
 ### Customer List & Detail
 
@@ -516,6 +543,8 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
   - `GET /api/v1/reports/inventory?warehouseId=&stockItemId=&movementType=`
   - `GET /api/v1/reports/commissions`
   - `GET /api/v1/reports/wallets`
+  - `GET /api/v1/reports/refunds`
+  - `GET /api/v1/reports/targets?branchId=&year=&quarter=`
 - **UI states**: charting (date range picker; group-by dropdown). For branch-scoped users the `branchId` filter is auto-applied; ADMIN/SUPER_BRANCH_MANAGER may override.
 
 ### Dashboards
@@ -541,6 +570,7 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
 - **Route**: `/admin/audit`.
 - **APIs (require `AUDIT_VIEW`)**:
   - `GET /api/v1/audit?actorUserId=&branchId=&entityType=&entityId=&action=&from=&to=&page=&limit=`
+  - `GET /api/v1/audit/summary?branchId=&entityType=&action=&startDate=&endDate=&recentLimit=`
   - `GET /api/v1/audit/entity/:entityType/:entityId`
   - `GET /api/v1/audit/user/:userId`
 - **UI states**: timeline view per entity (chronological asc); user activity tab splits into `loginHistory[]` and `recentActions[]` with `latestActivity` timestamp.
@@ -550,6 +580,7 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
 - **Route**: `/notifications`.
 - **APIs**:
   - `GET /api/v1/notifications?unreadOnly=&type=&page=&limit=` (`NOTIFICATION_VIEW`)
+  - `GET /api/v1/notifications/summary?unreadOnly=&type=`
   - `GET /api/v1/notifications/unread-count`
   - `PATCH /api/v1/notifications/:id/read`
   - `PATCH /api/v1/notifications/read-all`
@@ -561,9 +592,42 @@ This guide maps **suggested frontend screens → required backend APIs**, with p
 - **Route**: `/admin/automation`.
 - **APIs (require `AUTOMATION_MANAGE`)**:
   - `GET /api/v1/automation/rules`
+  - `GET /api/v1/automation/runs?code=&limit=`
   - `POST /api/v1/automation/run/:code` (manual override; ignores enabled flag)
   - `PATCH /api/v1/automation/rules/:code` (`{ "enabled": true|false }`)
 - **UI states**: per-rule card showing `code`, `description`, `schedule`, `enabled`, `lastRunAt`, `lastResult`. "Run now" trigger fires immediately and shows the count summary.
+
+### Settings
+
+- **Route**: `/settings`.
+- **APIs**:
+  - `GET /api/v1/settings`
+  - `PATCH /api/v1/settings`
+- **Access**: `ADMIN` and `SUPER_BRANCH_MANAGER` only.
+- **Payload shape**:
+  ```json
+  {
+    "general": {
+      "defaultBranchId": "<optional branchId>",
+      "reportWindowDays": 30
+    },
+    "finance": {
+      "refundApprovalRoles": ["ADMIN", "SUPER_BRANCH_MANAGER", "BRANCH_MANAGER"]
+    },
+    "inventory": {
+      "lowStockThreshold": 5,
+      "expiryAlertDays": 30
+    },
+    "notifications": {
+      "appointmentReminderWindowHours": 24,
+      "walletExpiryNoticeDays": 30
+    },
+    "automation": {
+      "leadFollowupHours": 24
+    }
+  }
+  ```
+- **UI states**: load current values, submit partial updates, then refresh from the server. Treat the response as the source of truth because defaults are merged server-side.
 
 ### Branch Quarterly Targets
 

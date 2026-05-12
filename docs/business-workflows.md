@@ -6,7 +6,33 @@ Each workflow below documents the **trigger**, **preconditions**, **step-by-step
 
 ---
 
-## 1. Lead Conversion
+## 1. Lead Qualification And Conversion
+
+**Status path**:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW
+    NEW --> CONTACTED
+    CONTACTED --> FOLLOW_UP
+    FOLLOW_UP --> CONTACTED
+    FOLLOW_UP --> QUALIFIED
+    QUALIFIED --> WON: convert()
+    QUALIFIED --> LOST
+    WON --> ARCHIVED
+    LOST --> ARCHIVED
+    ARCHIVED --> [*]
+```
+
+**Interaction timeline**:
+
+- `POST /leads/:id/interactions` persists `CALL`, `CHAT`, `NOTE`, `MEETING`, or `FOLLOW_UP` rows under the lead.
+- `GET /leads/:id/interactions` returns reverse-chronological history with actor attribution.
+- `PATCH /leads/interactions/:id` edits the interaction note / outcome / next action.
+- `DELETE /leads/interactions/:id` removes the row and writes an audit entry.
+- Creating or updating an interaction refreshes `lead.lastContactedAt`, so the CRM list can sort / display recency without inferring it on the client.
+
+### Lead Conversion
 
 **Trigger**: `POST /leads/:id/convert` (`LeadsService.convert`).
 
@@ -14,7 +40,7 @@ Each workflow below documents the **trigger**, **preconditions**, **step-by-step
 
 - Caller has role: `ADMIN`, `SUPER_BRANCH_MANAGER`, `BRANCH_MANAGER`, `TELESALES`, or `CS` (controller-level).
 - Branch scope passes (`assertBranchAccess(user, lead.branchId)`).
-- Lead status is **not** `WON`, `LOST`, or `ARCHIVED`.
+- Lead status is exactly `QUALIFIED`.
 
 **Flow**:
 
@@ -24,29 +50,8 @@ Each workflow below documents the **trigger**, **preconditions**, **step-by-step
 4. Else → mint a new customer in the same transaction:
    - Inside `prisma.$transaction`, take advisory lock `customer-code` and call `generateMonthlyCode(tx, 'CUST', 'customer-code')` → `CUST-YYYYMM-####`.
    - Create `Customer` with `currentBranchId = lead.branchId`.
-5. Update lead → `status = WON`, `customerId = customer.id`, `convertedAt = now`.
+5. Update lead → `status = WON`, `customerId = customer.id`, `convertedCustomerId = customer.id`.
 6. Audit: `Lead.update`, `Customer.create` (when minted).
-
-**State transitions**:
-
-```mermaid
-stateDiagram-v2
-    [*] --> NEW
-    NEW --> CONTACTED
-    CONTACTED --> QUALIFIED
-    QUALIFIED --> WON: convert()
-    NEW --> WON: convert()
-    CONTACTED --> WON: convert()
-    NEW --> LOST
-    NEW --> ARCHIVED
-    CONTACTED --> LOST
-    QUALIFIED --> LOST
-    CONTACTED --> ARCHIVED
-    QUALIFIED --> ARCHIVED
-    WON --> [*]
-    LOST --> [*]
-    ARCHIVED --> [*]
-```
 
 **Side effects**:
 
@@ -609,6 +614,78 @@ stateDiagram-v2
 
 - Pure read; no writes (`audit` only on create/update).
 - Returned shape: `{ branch, year, quarter, totalTarget, totalActual, overallProgress, categories: [{ commissionGroup, target, actual, progress }] }`.
+
+---
+
+## 15. Back-Office Settings Management
+
+**Trigger**: `GET /settings`, `PATCH /settings` (`SettingsService`).
+
+**Preconditions**:
+
+- Caller role is `ADMIN` or `SUPER_BRANCH_MANAGER`.
+- When `general.defaultBranchId` is provided, the branch must exist and remain active.
+
+**Flow**:
+
+1. `GET /settings` loads persisted `SystemSetting` rows by category and merges them with backend defaults.
+2. `PATCH /settings` validates the incoming sections (`general`, `finance`, `inventory`, `notifications`, `automation`).
+3. Inside a transaction, the service upserts each category row into `system_settings`.
+4. Audit is written with the before/after payload for the changed categories.
+5. The merged settings payload is returned immediately for UI refresh.
+
+**State**:
+
+```mermaid
+stateDiagram-v2
+    [*] --> DEFAULTS_ONLY
+    DEFAULTS_ONLY --> PERSISTED: first PATCH /settings
+    PERSISTED --> PERSISTED: subsequent PATCH /settings
+```
+
+**Side effects**:
+
+- Durable org-wide configuration replaces prior in-memory or frontend-only admin state.
+- Audit entries are available through the Phase 7 audit views.
+
+---
+
+## 16. Back-Office Notifications, Audit, and Automation Visibility
+
+**Trigger**:
+
+- `GET /notifications`, `GET /notifications/summary`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`
+- `GET /audit`, `GET /audit/summary`
+- `GET /automation/rules`, `GET /automation/runs`, `PATCH /automation/rules/:code`, `POST /automation/run/:code`
+
+**Preconditions**:
+
+- Notifications require authenticated access; reads are scoped to the current actor.
+- Audit summary/search requires `AUDIT_VIEW`.
+- Automation management requires `AUTOMATION_MANAGE`.
+
+**Flow**:
+
+1. Back-office UI reads `notifications/unread-count` for the header bell and `notifications/summary` + `notifications` for the inbox page.
+2. User actions `mark-read` and `read-all` update persisted notification rows for that actor only.
+3. Audit pages query both timeline rows and summary aggregations (`byAction`, `byEntity`, recent rows) from the same scoped filters.
+4. Automation pages load persisted rule state from `automation_rule_states` and recent executions from `automation_run_logs`.
+5. Toggling a rule updates its durable enabled flag; manual runs create a run-log row, execute the rule, then persist success/failure and result counts.
+6. Admin automation actions are auditable and the resulting notifications continue to land in the same inbox infrastructure.
+
+**State transitions**:
+
+```mermaid
+stateDiagram-v2
+    [*] --> ENABLED
+    ENABLED --> DISABLED: PATCH /automation/rules/:code {enabled:false}
+    DISABLED --> ENABLED: PATCH /automation/rules/:code {enabled:true}
+```
+
+**Side effects**:
+
+- Restart-safe automation toggles and run history.
+- Notification inbox and audit summaries expose Phase 7 operational visibility without inventing new business logic.
 
 ---
 

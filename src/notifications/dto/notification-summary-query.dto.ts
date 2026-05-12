@@ -1,7 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
-import { NotificationType } from '@prisma/client';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 const toBool = ({ value }: { value: unknown }): unknown => {
   if (typeof value === 'boolean') return value;
@@ -12,15 +10,11 @@ const toBool = ({ value }: { value: unknown }): unknown => {
   return value;
 };
 
-export class NotificationQueryDto extends PaginationDto {
+export class NotificationSummaryQueryDto {
   @IsOptional()
   @Transform(toBool)
   @IsBoolean()
   unreadOnly?: boolean;
-
-  @IsOptional()
-  @IsEnum(NotificationType)
-  type?: NotificationType;
 
   @IsOptional()
   @IsString()

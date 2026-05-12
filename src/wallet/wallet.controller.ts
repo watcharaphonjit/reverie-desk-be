@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -17,6 +18,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CreditWalletDto } from './dto/credit-wallet.dto';
 import { DebitWalletDto } from './dto/debit-wallet.dto';
 import { TransferWalletDto } from './dto/transfer-wallet.dto';
+import { WalletHistoryQueryDto } from './dto/wallet-history-query.dto';
 import { WalletService } from './wallet.service';
 
 const READ_ROLES = [
@@ -42,8 +44,19 @@ export class WalletController {
   constructor(private readonly wallet: WalletService) {}
 
   @Get('customer/:customerId')
-  listForCustomer(@Param('customerId') customerId: string) {
-    return this.wallet.listForCustomer(customerId);
+  listForCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('customerId') customerId: string,
+  ) {
+    return this.wallet.listForCustomer(user, customerId);
+  }
+
+  @Get('history')
+  listHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: WalletHistoryQueryDto,
+  ) {
+    return this.wallet.listHistory(user, query);
   }
 
   @Post('credit')

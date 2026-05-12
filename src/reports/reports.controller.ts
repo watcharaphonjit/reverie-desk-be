@@ -9,8 +9,10 @@ import { AppointmentsReportQueryDto } from './dto/appointments-report-query.dto'
 import { CommissionsReportQueryDto } from './dto/commissions-report-query.dto';
 import { InventoryReportQueryDto } from './dto/inventory-report-query.dto';
 import { PaymentsReportQueryDto } from './dto/payments-report-query.dto';
+import { RefundsReportQueryDto } from './dto/refunds-report-query.dto';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { ServiceEventsReportQueryDto } from './dto/service-events-report-query.dto';
+import { TargetsReportQueryDto } from './dto/targets-report-query.dto';
 import { WalletsReportQueryDto } from './dto/wallets-report-query.dto';
 import { ReportsService } from './reports.service';
 
@@ -76,5 +78,21 @@ export class ReportsController {
     @Query() query: WalletsReportQueryDto,
   ) {
     return this.reports.wallets(user, query);
+  }
+
+  @Get('refunds')
+  refunds(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: RefundsReportQueryDto,
+  ) {
+    return this.reports.refunds(user, query);
+  }
+
+  @Get('targets')
+  targets(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: TargetsReportQueryDto,
+  ) {
+    return this.reports.targets(user, query);
   }
 }

@@ -26,9 +26,9 @@ The `Permission` table is seeded once and granted by role:
 | `REPORT_VIEW` | `/api/v1/reports/*` |
 | `DASHBOARD_VIEW` | `/api/v1/dashboard/*` |
 | `AUDIT_VIEW` | `/api/v1/audit/*` |
-| `NOTIFICATION_VIEW` | `GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, `PATCH …/read-all`, `PATCH …/:id/read` |
+| `NOTIFICATION_VIEW` | `GET /api/v1/notifications`, `GET /api/v1/notifications/summary`, `GET /api/v1/notifications/unread-count`, `PATCH …/read-all`, `PATCH …/:id/read` |
 | `NOTIFICATION_MANAGE` | `POST /api/v1/notifications` |
-| `AUTOMATION_MANAGE` | `GET /api/v1/automation/rules`, `POST /api/v1/automation/run/:code`, `PATCH /api/v1/automation/rules/:code` |
+| `AUTOMATION_MANAGE` | `GET /api/v1/automation/rules`, `GET /api/v1/automation/runs`, `POST /api/v1/automation/run/:code`, `PATCH /api/v1/automation/rules/:code` |
 
 ### Permissions by Role (from `prisma/seed.ts`)
 
@@ -257,6 +257,7 @@ Legend:
 | Endpoint group | ADMIN | SUPER_BRANCH_MANAGER | BRANCH_MANAGER | TELESALES | CS | DOCTOR | EMPLOYEE | CENTRAL_STOCK_HUB |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | `GET /reports/sales`, `/payments`, `/service-events`, `/appointments`, `/inventory`, `/commissions`, `/wallets` | ✅ | ✅ | ✅ (scoped) | — | ✅ (scoped) | — | — | ✅ |
+| `GET /reports/refunds`, `/targets` | ✅ | ✅ | ✅ (scoped) | — | ✅ (scoped) | — | — | ✅ |
 
 ### Dashboards (`/dashboard/*`) — gated by `DASHBOARD_VIEW`
 
@@ -274,6 +275,7 @@ Legend:
 | Action | ADMIN | SUPER_BRANCH_MANAGER | BRANCH_MANAGER | TELESALES | CS | DOCTOR | EMPLOYEE | CENTRAL_STOCK_HUB |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Search (`GET /audit`) | ✅ | ✅ | ✅ (own branch) | — | — | — | — | — |
+| Summary (`GET /audit/summary`) | ✅ | ✅ | ✅ (own branch) | — | — | — | — | — |
 | Entity timeline | ✅ | ✅ | ✅ (own branch) | — | — | — | — | — |
 | User activity | ✅ | ✅ | ✅ (same branch only) | — | — | — | — | — |
 
@@ -281,14 +283,20 @@ Legend:
 
 | Action | ADMIN | SUPER_BRANCH_MANAGER | BRANCH_MANAGER | TELESALES | CS | DOCTOR | EMPLOYEE | CENTRAL_STOCK_HUB |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| List own / unread count / mark read / mark-all read (`NOTIFICATION_VIEW`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| List own / summary / unread count / mark read / mark-all read (`NOTIFICATION_VIEW`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Compose / broadcast (`POST /notifications`, `NOTIFICATION_MANAGE`) | ✅ | ✅ | ✅ | — | — | — | — | — |
 
 ### Automation (`/automation/*`) — gated by `AUTOMATION_MANAGE`
 
 | Action | ADMIN | SUPER_BRANCH_MANAGER | BRANCH_MANAGER | TELESALES | CS | DOCTOR | EMPLOYEE | CENTRAL_STOCK_HUB |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| List rules / Run rule / Toggle enabled | ✅ | ✅ | — | — | — | — | — | — |
+| List rules / run log / Run rule / Toggle enabled | ✅ | ✅ | — | — | — | — | — | — |
+
+### Settings (`/settings`)
+
+| Action | ADMIN | SUPER_BRANCH_MANAGER | BRANCH_MANAGER | TELESALES | CS | DOCTOR | EMPLOYEE | CENTRAL_STOCK_HUB |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Read / Update | ✅ | ✅ | — | — | — | — | — | — |
 
 ### Health (`/health/*`) — public
 

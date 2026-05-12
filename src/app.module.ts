@@ -51,6 +51,7 @@ import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AutomationModule } from './automation/automation.module';
 import { JobsModule } from './jobs/jobs.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { JobsModule } from './jobs/jobs.module';
     NotificationsModule,
     AutomationModule,
     JobsModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

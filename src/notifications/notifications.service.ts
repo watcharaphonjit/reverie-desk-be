@@ -1,16 +1,25 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 // (decorator on NotificationsModule, not service — see notifications.module.ts)
 import {
+  AuditAction,
   Notification,
   NotificationChannel,
   NotificationType,
   Prisma,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
+import { assertBranchAccess } from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
+import { AuditService } from '../common/services/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
+import { NotificationSummaryQueryDto } from './dto/notification-summary-query.dto';
 import { NotificationProviderRegistry } from './providers/registry';
 
 export interface NotifyInput {
@@ -66,6 +75,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providers: NotificationProviderRegistry,
+    private readonly audit: AuditService,
   ) {}
 
   // ───────────────────────── notify (internal) ─────────────────────────
@@ -182,8 +192,10 @@ export class NotificationsService {
     user: AuthenticatedUser,
     query: NotificationQueryDto,
   ): Promise<PaginatedResult<Notification>> {
+    const scope = this.resolveNotificationScope(user, query);
     const where: Prisma.NotificationWhereInput = {
-      userId: user.id,
+      userId: scope.userId,
+      ...(scope.branchId ? { branchId: scope.branchId } : {}),
       ...(query.unreadOnly ? { isRead: false } : {}),
       ...(query.type ? { type: query.type } : {}),
     };
@@ -199,6 +211,49 @@ export class NotificationsService {
       this.prisma.notification.count({ where }),
     ]);
     return { data, meta: { page, limit, total } };
+  }
+
+  async summary(user: AuthenticatedUser, query: NotificationSummaryQueryDto) {
+    const scope = this.resolveNotificationScope(user, query);
+    const where: Prisma.NotificationWhereInput = {
+      userId: scope.userId,
+      ...(scope.branchId ? { branchId: scope.branchId } : {}),
+      ...(query.unreadOnly ? { isRead: false } : {}),
+    };
+
+    const [totalCount, unreadCount, bucketRows, recent] =
+      await this.prisma.$transaction([
+        this.prisma.notification.count({ where }),
+        this.prisma.notification.count({
+          where: { ...where, isRead: false },
+        }),
+        this.prisma.notification.findMany({
+          where,
+          select: { type: true },
+        }),
+        this.prisma.notification.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: 8,
+        }),
+      ]);
+
+    const byTypeMap = new Map<NotificationType, number>();
+    for (const row of bucketRows) {
+      byTypeMap.set(row.type, (byTypeMap.get(row.type) ?? 0) + 1);
+    }
+
+    return {
+      summary: {
+        totalCount,
+        unreadCount,
+      },
+      byType: Array.from(byTypeMap.entries()).map(([type, count]) => ({
+        type,
+        count,
+      })),
+      recent,
+    };
   }
 
   async unreadCount(user: AuthenticatedUser): Promise<{ count: number }> {
@@ -234,6 +289,9 @@ export class NotificationsService {
     actor: AuthenticatedUser,
     dto: CreateNotificationDto,
   ): Promise<Notification> {
+    if (dto.branchId) {
+      assertBranchAccess(actor, dto.branchId);
+    }
     const result = await this.notify({
       userId: dto.userId,
       branchId: dto.branchId,
@@ -243,9 +301,45 @@ export class NotificationsService {
       channel: dto.channel,
       metadata: dto.metadata ? (dto.metadata as Prisma.InputJsonValue) : null,
     });
+    await this.audit.record({
+      actorUserId: actor.id,
+      branchId: dto.branchId ?? actor.branchId,
+      entityType: 'Notification',
+      entityId: result.notification.id,
+      action: AuditAction.CREATE,
+      payload: {
+        userId: dto.userId ?? null,
+        branchId: dto.branchId ?? null,
+        type: dto.type,
+        channel: dto.channel ?? NotificationChannel.IN_APP,
+      },
+    });
     this.logger.log(
       `User ${actor.id} created notification ${result.notification.id}`,
     );
     return result.notification;
+  }
+
+  private resolveNotificationScope(
+    user: AuthenticatedUser,
+    query: Pick<NotificationQueryDto, 'userId' | 'branchId'>,
+  ): { userId: string; branchId?: string } {
+    const requestingOtherUser = query.userId && query.userId !== user.id;
+    const requestingBranch = Boolean(query.branchId);
+    if (
+      (requestingOtherUser || requestingBranch) &&
+      !user.permissions.includes('NOTIFICATION_MANAGE')
+    ) {
+      throw new ForbiddenException(
+        'Notification admin scope requires NOTIFICATION_MANAGE',
+      );
+    }
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    return {
+      userId: query.userId ?? user.id,
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+    };
   }
 }

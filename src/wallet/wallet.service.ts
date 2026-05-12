@@ -13,11 +13,17 @@ import {
   WalletType,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
+import {
+  assertBranchAccess,
+  scopedBranchFilter,
+} from '../common/authz/branch-scope';
+import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditWalletDto } from './dto/credit-wallet.dto';
 import { DebitWalletDto } from './dto/debit-wallet.dto';
 import { TransferWalletDto } from './dto/transfer-wallet.dto';
+import { WalletHistoryQueryDto } from './dto/wallet-history-query.dto';
 
 export interface WalletPostingInput {
   customerId: string;
@@ -31,6 +37,27 @@ export interface WalletPostingInput {
   metadata?: Prisma.InputJsonValue | null;
   actorUserId: string | null;
 }
+
+const WALLET_HISTORY_INCLUDE = {
+  wallet: {
+    select: {
+      id: true,
+      customerId: true,
+      type: true,
+      currency: true,
+      customer: {
+        select: { id: true, code: true, fullName: true },
+      },
+    },
+  },
+  branch: { select: { id: true, code: true, name: true } },
+  createdByUser: { select: { id: true, fullName: true, email: true } },
+} satisfies Prisma.WalletTransactionInclude;
+
+export type WalletTransactionWithRelations =
+  Prisma.WalletTransactionGetPayload<{
+    include: typeof WALLET_HISTORY_INCLUDE;
+  }>;
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
@@ -60,22 +87,60 @@ export class WalletService {
 
   // ───────────────────────── public APIs ─────────────────────────
 
-  async listForCustomer(customerId: string): Promise<Wallet[]> {
-    const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!customer) throw new NotFoundException('Customer not found');
+  async listForCustomer(
+    user: AuthenticatedUser,
+    customerId: string,
+  ): Promise<Wallet[]> {
+    await this.assertCustomerAccess(user, customerId);
     return this.prisma.wallet.findMany({
       where: { customerId },
       orderBy: [{ type: 'asc' }],
     });
   }
 
+  async listHistory(
+    user: AuthenticatedUser,
+    query: WalletHistoryQueryDto,
+  ): Promise<PaginatedResult<WalletTransactionWithRelations>> {
+    if (query.customerId) {
+      await this.assertCustomerAccess(user, query.customerId);
+    }
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    const branchScope = query.branchId ?? scopedBranchFilter(user);
+    const walletWhere: Prisma.WalletWhereInput = {
+      ...(query.customerId ? { customerId: query.customerId } : {}),
+      ...(query.walletType ? { type: query.walletType } : {}),
+    };
+    const where: Prisma.WalletTransactionWhereInput = {
+      ...(branchScope ? { branchId: branchScope } : {}),
+      ...(query.walletId ? { walletId: query.walletId } : {}),
+      ...(Object.keys(walletWhere).length > 0 ? { wallet: walletWhere } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.referenceType ? { referenceType: query.referenceType } : {}),
+      ...this.buildHistoryDateFilter(query.from, query.to),
+    };
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.walletTransaction.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ createdAt: 'desc' }],
+        include: WALLET_HISTORY_INCLUDE,
+      }),
+      this.prisma.walletTransaction.count({ where }),
+    ]);
+    return { data, meta: { page, limit, total } };
+  }
+
   async credit(
     user: AuthenticatedUser,
     dto: CreditWalletDto,
   ): Promise<{ wallet: Wallet; transaction: WalletTransaction }> {
+    await this.assertWalletOperationAccess(user, dto.customerId, dto.branchId);
     return this.prisma.$transaction((tx) =>
       this.creditWith(tx, {
         customerId: dto.customerId,
@@ -95,6 +160,7 @@ export class WalletService {
     user: AuthenticatedUser,
     dto: DebitWalletDto,
   ): Promise<{ wallet: Wallet; transaction: WalletTransaction }> {
+    await this.assertWalletOperationAccess(user, dto.customerId, dto.branchId);
     return this.prisma.$transaction((tx) =>
       this.debitWith(tx, {
         customerId: dto.customerId,
@@ -126,6 +192,10 @@ export class WalletService {
         'Source and destination wallets must differ',
       );
     }
+    await Promise.all([
+      this.assertWalletOperationAccess(user, dto.fromCustomerId, dto.branchId),
+      this.assertWalletOperationAccess(user, dto.toCustomerId, dto.branchId),
+    ]);
     return this.prisma.$transaction(async (tx) => {
       const referenceId = `transfer-${Date.now()}-${user.id.slice(0, 6)}`;
       const out = await this.debitWith(tx, {
@@ -364,5 +434,61 @@ export class WalletService {
       throw new BadRequestException('Wallet is inactive');
     }
     return wallet;
+  }
+
+  private buildHistoryDateFilter(
+    from?: string,
+    to?: string,
+  ): Record<string, Prisma.DateTimeFilter> {
+    if (!from && !to) return {};
+    const range: Prisma.DateTimeFilter = {};
+    if (from) {
+      range.gte = this.coerceRangeBoundary(from, 'start');
+    }
+    if (to) {
+      range.lte = this.coerceRangeBoundary(to, 'end');
+    }
+    return { createdAt: range };
+  }
+
+  private coerceRangeBoundary(raw: string, side: 'start' | 'end'): Date {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const suffix = side === 'start' ? 'T00:00:00.000Z' : 'T23:59:59.999Z';
+      return new Date(`${raw}${suffix}`);
+    }
+    return new Date(raw);
+  }
+
+  private async assertCustomerAccess(
+    user: AuthenticatedUser,
+    customerId: string,
+  ): Promise<{ id: string; currentBranchId: string | null }> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { id: true, currentBranchId: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+    assertBranchAccess(user, customer.currentBranchId);
+    return customer;
+  }
+
+  private async assertWalletOperationAccess(
+    user: AuthenticatedUser,
+    customerId: string,
+    branchId?: string,
+  ): Promise<void> {
+    if (branchId) {
+      assertBranchAccess(user, branchId);
+    }
+    const customer = await this.assertCustomerAccess(user, customerId);
+    if (
+      branchId &&
+      customer.currentBranchId &&
+      customer.currentBranchId !== branchId
+    ) {
+      throw new BadRequestException(
+        'Wallet operation branchId must match the customer current branch',
+      );
+    }
   }
 }

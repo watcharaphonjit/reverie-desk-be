@@ -16,6 +16,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
+import { NotificationSummaryQueryDto } from './dto/notification-summary-query.dto';
 import { NotificationsService } from './notifications.service';
 
 @ApiTags('notifications')
@@ -38,6 +39,15 @@ export class NotificationsController {
   @RequirePermission('NOTIFICATION_VIEW')
   unreadCount(@CurrentUser() user: AuthenticatedUser) {
     return this.notifications.unreadCount(user);
+  }
+
+  @Get('summary')
+  @RequirePermission('NOTIFICATION_VIEW')
+  summary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: NotificationSummaryQueryDto,
+  ) {
+    return this.notifications.summary(user, query);
   }
 
   @Patch('read-all')

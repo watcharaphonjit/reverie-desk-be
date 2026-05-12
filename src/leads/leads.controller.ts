@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -19,7 +20,9 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { AssignLeadDto } from './dto/assign-lead.dto';
 import { ConvertLeadDto } from './dto/convert-lead.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
+import { CreateLeadInteractionDto } from './dto/create-lead-interaction.dto';
 import { ListLeadsQuery } from './dto/list-leads.query';
+import { UpdateLeadInteractionDto } from './dto/update-lead-interaction.dto';
 import { UpdateLeadStatusDto } from './dto/update-status.dto';
 import { LeadsService } from './leads.service';
 
@@ -47,6 +50,25 @@ export class LeadsController {
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.leadsService.findOne(user, id);
+  }
+
+  @Post(':id/interactions')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles('ADMIN', 'TELESALES', 'CS', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
+  createInteraction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateLeadInteractionDto,
+  ) {
+    return this.leadsService.createInteraction(user, id, dto);
+  }
+
+  @Get(':id/interactions')
+  listInteractions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.leadsService.listInteractions(user, id);
   }
 
   @Post(':id/assign')
@@ -79,5 +101,25 @@ export class LeadsController {
     @Body() dto: ConvertLeadDto,
   ) {
     return this.leadsService.convert(user, id, dto);
+  }
+
+  @Patch('interactions/:id')
+  @Roles('ADMIN', 'TELESALES', 'CS', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
+  updateInteraction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateLeadInteractionDto,
+  ) {
+    return this.leadsService.updateInteraction(user, id, dto);
+  }
+
+  @Delete('interactions/:id')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'TELESALES', 'CS', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
+  deleteInteraction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.leadsService.deleteInteraction(user, id);
   }
 }

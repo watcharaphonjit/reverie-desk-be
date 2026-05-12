@@ -1,7 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { AuditAction, UserStatus } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
-import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { AuditService } from '../common/services/audit.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { AuthenticatedUser, JwtPayload } from './strategies/jwt.strategy';
@@ -11,6 +12,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -28,7 +30,10 @@ export class AuthService {
     if (!passwordMatches)
       throw new UnauthorizedException('Invalid credentials');
 
-    const roles = await this.usersService.getRoleCodes(user.id);
+    const [roles, permissions] = await Promise.all([
+      this.usersService.getRoleCodes(user.id),
+      this.usersService.getPermissionCodes(user.id),
+    ]);
 
     const payload: JwtPayload = {
       sub: user.id,
@@ -36,6 +41,16 @@ export class AuthService {
       branchId: user.branchId,
     };
     const accessToken = await this.jwtService.signAsync(payload);
+    await this.audit.record({
+      actorUserId: user.id,
+      branchId: user.branchId,
+      entityType: 'AuthSession',
+      entityId: user.id,
+      action: AuditAction.LOGIN,
+      payload: {
+        email: user.email,
+      },
+    });
 
     return {
       accessToken,
@@ -51,11 +66,19 @@ export class AuthService {
         // forward (the column is auto-derived in `UsersService`).
         fullName: user.fullName,
         roles,
+        permissions,
       },
     };
   }
 
   async getProfile(user: AuthenticatedUser) {
-    return this.usersService.findOne(user, user.id);
+    const [profile, permissions] = await Promise.all([
+      this.usersService.findOne(user, user.id),
+      this.usersService.getPermissionCodes(user.id),
+    ]);
+    return {
+      ...profile,
+      permissions,
+    };
   }
 }

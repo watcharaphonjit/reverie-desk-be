@@ -133,10 +133,10 @@ For each module: **Path**, **Purpose**, **Main entities**, **Exposed APIs**, **D
 ### `leads`
 
 - **Path**: `src/leads/`
-- **Purpose**: Lead pipeline; owner reassignment + ownership log; convert to customer.
-- **Main entities**: `Lead`, `LeadOwnerLog`.
-- **APIs**: `POST /leads`, `GET /leads`, `GET /leads/:id`, `POST /leads/:id/assign`, `PATCH /leads/:id/status`, `POST /leads/:id/convert`.
-- **State**: `LeadStatus = NEW → CONTACTED → QUALIFIED → {LOST, ARCHIVED}`; `WON` only via `convert()`.
+- **Purpose**: Lead pipeline; owner reassignment + ownership log; interaction history; convert qualified leads to customers.
+- **Main entities**: `Lead`, `LeadOwnerLog`, `LeadInteraction`.
+- **APIs**: `POST /leads`, `GET /leads`, `GET /leads/:id`, `GET /leads/:id/interactions`, `POST /leads/:id/interactions`, `POST /leads/:id/assign`, `PATCH /leads/:id/status`, `PATCH /leads/interactions/:id`, `DELETE /leads/interactions/:id`, `POST /leads/:id/convert`.
+- **State**: `LeadStatus = NEW → CONTACTED → FOLLOW_UP → QUALIFIED`; `QUALIFIED → LOST`; `QUALIFIED → WON` only via `convert()`; `WON/LOST → ARCHIVED`.
 - **Depends on**: `prisma`, `common/audit`, `customer` (`generateMonthlyCode`), `branches`.
 - **Used by**: `sales-orders` (optional `leadId`), `commissions` (`LEAD_REWARD` recipient).
 
@@ -302,7 +302,7 @@ For each module: **Path**, **Purpose**, **Main entities**, **Exposed APIs**, **D
 
 - **Path**: `src/reports/`
 - **Purpose**: Read-only aggregated views.
-- **APIs**: `GET /reports/sales`, `/payments`, `/service-events`, `/appointments`, `/inventory`, `/commissions`, `/wallets`. All require `REPORT_VIEW`.
+- **APIs**: `GET /reports/sales`, `/payments`, `/service-events`, `/appointments`, `/inventory`, `/commissions`, `/wallets`, `/refunds`, `/targets`. All require `REPORT_VIEW`.
 - **Depends on**: every transactional model (read only).
 
 ### `dashboard`
@@ -314,14 +314,14 @@ For each module: **Path**, **Purpose**, **Main entities**, **Exposed APIs**, **D
 ### `audit`
 
 - **Path**: `src/audit/`
-- **APIs**: `GET /audit`, `GET /audit/entity/:entityType/:entityId`, `GET /audit/user/:userId`. All require `AUDIT_VIEW`. Admin throttle (50/min).
+- **APIs**: `GET /audit`, `GET /audit/summary`, `GET /audit/entity/:entityType/:entityId`, `GET /audit/user/:userId`. All require `AUDIT_VIEW`. Admin throttle (50/min).
 - **Depends on**: `prisma` (read-only on `audit_logs`).
 - **Note**: writes to `audit_logs` happen in `src/common/services/audit.service.ts` (write-side `AuditService`); the audit module is read-only (`AuditQueryService`).
 
 ### `notifications` (global)
 
 - **Path**: `src/notifications/`
-- **APIs**: `GET /notifications`, `GET /notifications/unread-count`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`, `POST /notifications`.
+- **APIs**: `GET /notifications`, `GET /notifications/summary`, `GET /notifications/unread-count`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`, `POST /notifications`.
 - **Main entities**: `Notification` (with `dedupeKey @unique`).
 - **Providers**: in-app (DB), email (stub), SMS (stub) via `NotificationProviderRegistry`.
 - **Used by**: `payments`, `appointments`, `commissions`, `refunds`, `inventory/stock-transfers`, `automation/*`.
@@ -329,11 +329,20 @@ For each module: **Path**, **Purpose**, **Main entities**, **Exposed APIs**, **D
 ### `automation` (global)
 
 - **Path**: `src/automation/`
-- **APIs**: `GET /automation/rules`, `POST /automation/run/:code`, `PATCH /automation/rules/:code` (enable/disable). All require `AUTOMATION_MANAGE`.
+- **APIs**: `GET /automation/rules`, `GET /automation/runs`, `POST /automation/run/:code`, `PATCH /automation/rules/:code` (enable/disable). All require `AUTOMATION_MANAGE`.
 - **Rules**: `DEPOSIT_PENDING`, `APPOINTMENT_REMINDER`, `LOW_STOCK`, `EXPIRING_STOCK`, `REFUND_APPROVAL`, `COMMISSION_ELIGIBLE`, `WALLET_EXPIRY`, `LEAD_FOLLOWUP` (each implements `AutomationRule`).
 - **Helpers**: `RecipientsService` resolves users by role + branch; `AutomationConfigService` exposes thresholds.
-- **Depends on**: `notifications` (global), `prisma` (read-only).
+- **Depends on**: `notifications` (global), `prisma` (read-write for persisted rule state + run logs).
 - **Used by**: `jobs/scheduler.service.ts`.
+
+### `settings`
+
+- **Path**: `src/settings/`
+- **Purpose**: Persist org-wide configuration for general, finance, inventory, notification, and automation thresholds.
+- **APIs**: `GET /settings`, `PATCH /settings`. Restricted to `ADMIN` and `SUPER_BRANCH_MANAGER`.
+- **Main entities**: `SystemSetting`.
+- **Depends on**: `branches` (default branch validation), `common/audit`.
+- **Used by**: back-office admin UI and local Phase 7 verification.
 
 ### `jobs`
 

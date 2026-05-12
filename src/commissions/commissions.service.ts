@@ -16,12 +16,19 @@ import {
   ServiceGroupCode,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
+import {
+  assertBranchAccess,
+  scopedBranchFilter,
+} from '../common/authz/branch-scope';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { pickHighestMatchingTier } from './commission-rules.service';
-import { CommissionQueryDto } from './dto/commission-query.dto';
+import {
+  CommissionPeriodField,
+  CommissionQueryDto,
+} from './dto/commission-query.dto';
 
 const COMMISSION_INCLUDE = {
   snapshot: true,
@@ -48,10 +55,35 @@ export interface EvaluateOrderResult {
   commissions: CommissionWithRelations[];
 }
 
+export interface CommissionBatchActionItemResult {
+  id: string;
+  success: boolean;
+  commission?: CommissionWithRelations;
+  error?: string;
+}
+
+export interface CommissionBatchActionResult {
+  requestedCount: number;
+  processedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  results: CommissionBatchActionItemResult[];
+}
+
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const decToNum = (v: Prisma.Decimal | number | null | undefined): number => {
   if (v == null) return 0;
   return typeof v === 'number' ? v : Number(v.toString());
+};
+
+const COMMISSION_PERIOD_COLUMN: Record<
+  CommissionPeriodField,
+  keyof Prisma.CommissionWhereInput
+> = {
+  CREATED_AT: 'createdAt',
+  ELIGIBLE_AT: 'eligibleAt',
+  LOCKED_AT: 'lockedAt',
+  PAID_AT: 'paidAt',
 };
 
 /**
@@ -83,6 +115,12 @@ export class CommissionsService {
     user: AuthenticatedUser,
     salesOrderId: string,
   ): Promise<EvaluateOrderResult> {
+    const order = await this.prisma.salesOrder.findUnique({
+      where: { id: salesOrderId },
+      select: { branchId: true },
+    });
+    if (!order) throw new NotFoundException('Sales order not found');
+    assertBranchAccess(user, order.branchId);
     return this.prisma.$transaction((tx) =>
       this.evaluateOrderWith(tx, salesOrderId, user.id),
     );
@@ -343,8 +381,13 @@ export class CommissionsService {
   // ───────────────────────── list / detail ─────────────────────────
 
   async findAll(
+    user: AuthenticatedUser,
     query: CommissionQueryDto,
   ): Promise<PaginatedResult<CommissionWithRelations>> {
+    if (query.branchId) {
+      assertBranchAccess(user, query.branchId);
+    }
+    const branchScope = query.branchId ?? scopedBranchFilter(user);
     const where: Prisma.CommissionWhereInput = {
       ...(query.recipientUserId
         ? { recipientUserId: query.recipientUserId }
@@ -352,17 +395,29 @@ export class CommissionsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.type ? { type: query.type } : {}),
       ...(query.salesOrderId ? { salesOrderId: query.salesOrderId } : {}),
-      ...(query.branchId ? { salesOrder: { branchId: query.branchId } } : {}),
+      ...(branchScope ? { salesOrder: { branchId: branchScope } } : {}),
       ...(query.group ? { snapshot: { serviceGroupCode: query.group } } : {}),
+      ...this.buildPeriodFilter(query),
     };
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    const orderField =
+      COMMISSION_PERIOD_COLUMN[query.periodField ?? 'CREATED_AT'];
+    const orderBy: Prisma.CommissionOrderByWithRelationInput[] =
+      orderField === 'createdAt'
+        ? [{ createdAt: 'desc' }]
+        : [
+            {
+              [orderField]: 'desc',
+            },
+            { createdAt: 'desc' },
+          ];
     const [data, total] = await this.prisma.$transaction([
       this.prisma.commission.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: COMMISSION_INCLUDE,
       }),
       this.prisma.commission.count({ where }),
@@ -370,13 +425,33 @@ export class CommissionsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findOne(id: string): Promise<CommissionWithRelations> {
+  async findOne(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<CommissionWithRelations> {
     const commission = await this.prisma.commission.findUnique({
       where: { id },
       include: COMMISSION_INCLUDE,
     });
     if (!commission) throw new NotFoundException('Commission not found');
+    assertBranchAccess(user, commission.salesOrder.branchId);
     return commission;
+  }
+
+  async lockBatch(
+    user: AuthenticatedUser,
+    ids: string[],
+    note?: string | null,
+  ): Promise<CommissionBatchActionResult> {
+    return this.runBatch(ids, (id) => this.lock(user, id, note));
+  }
+
+  async payBatch(
+    user: AuthenticatedUser,
+    ids: string[],
+    note?: string | null,
+  ): Promise<CommissionBatchActionResult> {
+    return this.runBatch(ids, (id) => this.pay(user, id, note));
   }
 
   /**
@@ -431,6 +506,7 @@ export class CommissionsService {
         include: { salesOrder: { select: { branchId: true } } },
       });
       if (!commission) throw new NotFoundException('Commission not found');
+      assertBranchAccess(user, commission.salesOrder.branchId);
       if (commission.status !== CommissionStatus.ELIGIBLE) {
         throw new ConflictException(
           `Cannot lock commission in status ${commission.status} (must be ELIGIBLE)`,
@@ -478,6 +554,7 @@ export class CommissionsService {
         include: { salesOrder: { select: { branchId: true } } },
       });
       if (!commission) throw new NotFoundException('Commission not found');
+      assertBranchAccess(user, commission.salesOrder.branchId);
       if (commission.status !== CommissionStatus.LOCKED) {
         throw new ConflictException(
           `Cannot pay commission in status ${commission.status} (must be LOCKED)`,
@@ -583,6 +660,61 @@ export class CommissionsService {
   }
 
   // ───────────────────────── private helpers ─────────────────────────
+
+  private buildPeriodFilter(
+    query: CommissionQueryDto,
+  ): Record<string, Prisma.DateTimeNullableFilter> {
+    if (!query.from && !query.to) return {};
+    const field = COMMISSION_PERIOD_COLUMN[query.periodField ?? 'CREATED_AT'];
+    const range: Prisma.DateTimeNullableFilter = {};
+    if (query.from) {
+      range.gte = this.coerceRangeBoundary(query.from, 'start');
+    }
+    if (query.to) {
+      range.lte = this.coerceRangeBoundary(query.to, 'end');
+    }
+    return { [field]: range };
+  }
+
+  private coerceRangeBoundary(raw: string, side: 'start' | 'end'): Date {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const suffix = side === 'start' ? 'T00:00:00.000Z' : 'T23:59:59.999Z';
+      return new Date(`${raw}${suffix}`);
+    }
+    return new Date(raw);
+  }
+
+  private async runBatch(
+    ids: string[],
+    handler: (id: string) => Promise<CommissionWithRelations>,
+  ): Promise<CommissionBatchActionResult> {
+    const uniqueIds = Array.from(
+      new Set(ids.map((id) => id.trim()).filter(Boolean)),
+    );
+    const results: CommissionBatchActionItemResult[] = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const commission = await handler(id);
+        results.push({ id, success: true, commission });
+      } catch (error) {
+        results.push({
+          id,
+          success: false,
+          error: error instanceof Error ? error.message : 'Batch action failed',
+        });
+      }
+    }
+
+    const succeededCount = results.filter((item) => item.success).length;
+    return {
+      requestedCount: ids.length,
+      processedCount: uniqueIds.length,
+      succeededCount,
+      failedCount: results.length - succeededCount,
+      results,
+    };
+  }
 
   private checkEligibility(
     type: CommissionType,

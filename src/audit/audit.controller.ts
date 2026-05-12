@@ -15,6 +15,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { AuditQueryService } from './audit.service';
 import { AuditQueryDto } from './dto/audit-query.dto';
+import { AuditSummaryQueryDto } from './dto/audit-summary-query.dto';
 import { UserActivityQueryDto } from './dto/user-activity-query.dto';
 
 @ApiTags('audit')
@@ -37,6 +38,14 @@ export class AuditController {
     @Query() query: AuditQueryDto,
   ) {
     return this.audit.search(user, query);
+  }
+
+  @Get('summary')
+  summary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: AuditSummaryQueryDto,
+  ) {
+    return this.audit.summary(user, query);
   }
 
   @Get('entity/:entityType/:entityId')

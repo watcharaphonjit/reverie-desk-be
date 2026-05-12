@@ -304,9 +304,9 @@ This catalogue documents every NestJS service class. For each service: **Respons
 ### `reports/reports.service.ts` — `ReportsService`
 
 - **Responsibility**: Aggregated read-only views.
-- **Inputs**: `getSalesReport`, `getPaymentsReport`, `getServiceEventsReport`, `getAppointmentsReport`, `getInventoryReport`, `getCommissionsReport`, `getWalletsReport`. Each takes a typed `*-report-query.dto.ts`.
+- **Inputs**: `sales`, `payments`, `serviceEvents`, `appointments`, `inventory`, `commissions`, `wallets`, `refunds`, `targets`. Each takes a typed `*-report-query.dto.ts`.
 - **Outputs**: aggregation payloads (totals + breakdowns).
-- **Cross-module calls**: none — direct Prisma `aggregate`/`groupBy`/`$queryRawUnsafe`.
+- **Cross-module calls**: `TargetProgressService.getQuarterProgress` for target reporting; otherwise direct Prisma `aggregate`/`groupBy`/`$queryRawUnsafe`.
 - **Tx boundary**: read-only.
 
 ### `dashboard/dashboard.service.ts` — `DashboardService`
@@ -320,14 +320,14 @@ This catalogue documents every NestJS service class. For each service: **Respons
 ### `audit/audit.service.ts` — `AuditQueryService`
 
 - **Responsibility**: Read access to `audit_logs`.
-- **Inputs**: `search(actor, query)`, `entityTimeline(actor, entityType, entityId, query)`, `userActivity(actor, userId, query)`.
-- **Outputs**: paginated `AuditLog` rows.
+- **Inputs**: `search(actor, query)`, `summary(actor, query)`, `entityTimeline(actor, entityType, entityId, query)`, `userActivity(actor, userId, query)`.
+- **Outputs**: paginated `AuditLog` rows plus summary buckets (`byAction`, `byEntity`, recent events).
 - **Cross-module calls**: none.
 - **Tx boundary**: read-only.
 
 ---
 
-## Notifications & Automation
+## Notifications, Automation & Settings
 
 ### `notifications/notifications.service.ts` — `NotificationsService`
 
@@ -337,7 +337,7 @@ This catalogue documents every NestJS service class. For each service: **Respons
   - `notifyMany(userIds, base)` — fan-out.
   - `dispatch(notification)` — invoke channel registry.
   - `dispatchById(id)` — used by BullMQ worker.
-  - `list(actor, query)`, `unreadCount(actor)`, `markRead(id, actor)`, `markAllRead(actor)`, `create(dto, actor)`.
+  - `list(actor, query)`, `summary(actor, query)`, `unreadCount(actor)`, `markRead(id, actor)`, `markAllRead(actor)`, `create(dto, actor)`.
 - **Outputs**: `{ created: boolean; notification: Notification }` (idempotent on `dedupeKey`).
 - **Cross-module calls**: `NotificationProviderRegistry.dispatch` → providers `InAppNotificationProvider`, `EmailNotificationProvider` (stub), `SmsNotificationProvider` (stub).
 - **Tx boundary**: writes are short single-row inserts; not part of the parent business tx (always invoked post-commit by callers).
@@ -345,10 +345,18 @@ This catalogue documents every NestJS service class. For each service: **Respons
 ### `automation/automation.service.ts` — `AutomationService`
 
 - **Responsibility**: Registry + dispatcher for automation rules.
-- **Inputs**: `listRules()`, `setEnabled(code, enabled)`, `run(code)` (manual override), `runScheduled(code)` (respects disabled flag).
-- **Outputs**: `AutomationRuleResult { code, createdCount, skippedCount, durationMs }`.
-- **Cross-module calls**: each `AutomationRule.execute()` queries Prisma read-side and calls `notifications.notifyMany`.
-- **Tx boundary**: rules are read-mostly; notification creates are individual short writes.
+- **Inputs**: `list()`, `listRuns(query)`, `setEnabled(actor, code, enabled)`, `run(code, actor?)`, `runScheduled(code)` (respects disabled flag).
+- **Outputs**: rule registry rows plus persisted `automation_run_logs` entries and `AutomationRuleResult`.
+- **Cross-module calls**: each `AutomationRule.execute()` queries Prisma read-side and calls `notifications.notifyMany`; writes audit rows when admins toggle or manually run rules.
+- **Tx boundary**: runtime state and run-log persistence use Prisma writes before/after each rule execution.
+
+### `settings/settings.service.ts` — `SettingsService`
+
+- **Responsibility**: Persist and merge org-wide settings with sensible defaults.
+- **Inputs**: `getAll()`, `update(actor, dto)`.
+- **Outputs**: `SettingsPayload` with `general`, `finance`, `inventory`, `notifications`, and `automation` sections.
+- **Cross-module calls**: validates `general.defaultBranchId` via `BranchesService`; writes audit entries for admin changes.
+- **Tx boundary**: `update` runs inside a Prisma transaction so setting persistence and audit logging stay in sync.
 
 ### `automation/recipients.service.ts` — `RecipientsService`
 

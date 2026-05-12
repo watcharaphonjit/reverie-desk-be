@@ -28,7 +28,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssignLeadDto } from './dto/assign-lead.dto';
 import { ConvertLeadDto } from './dto/convert-lead.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
+import { CreateLeadInteractionDto } from './dto/create-lead-interaction.dto';
 import { ListLeadsQuery } from './dto/list-leads.query';
+import { UpdateLeadInteractionDto } from './dto/update-lead-interaction.dto';
 import { UpdateLeadStatusDto } from './dto/update-status.dto';
 
 /** A lead automatically expires this many days after creation. */
@@ -36,21 +38,28 @@ const LEAD_EXPIRY_DAYS = 60;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const STATUS_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
-  [LeadStatus.NEW]: [
-    LeadStatus.CONTACTED,
-    LeadStatus.LOST,
-    LeadStatus.ARCHIVED,
-  ],
-  [LeadStatus.CONTACTED]: [
-    LeadStatus.QUALIFIED,
-    LeadStatus.LOST,
-    LeadStatus.ARCHIVED,
-  ],
-  [LeadStatus.QUALIFIED]: [LeadStatus.LOST, LeadStatus.ARCHIVED],
+  [LeadStatus.NEW]: [LeadStatus.CONTACTED],
+  [LeadStatus.CONTACTED]: [LeadStatus.FOLLOW_UP],
+  [LeadStatus.FOLLOW_UP]: [LeadStatus.CONTACTED, LeadStatus.QUALIFIED],
+  [LeadStatus.QUALIFIED]: [LeadStatus.LOST],
   [LeadStatus.WON]: [LeadStatus.ARCHIVED],
   [LeadStatus.LOST]: [LeadStatus.ARCHIVED],
   [LeadStatus.ARCHIVED]: [],
 };
+
+const LEAD_INTERACTION_INCLUDE = {
+  createdBy: {
+    select: {
+      id: true,
+      fullName: true,
+      title: true,
+      firstName: true,
+      middleName: true,
+      lastName: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.LeadInteractionInclude;
 
 const LEAD_DETAIL_INCLUDE = {
   branch: { select: { id: true, code: true, name: true } },
@@ -125,6 +134,11 @@ const LEAD_DETAIL_INCLUDE = {
         },
       },
     },
+  },
+  interactions: {
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: LEAD_INTERACTION_INCLUDE,
   },
 } satisfies Prisma.LeadInclude;
 
@@ -295,6 +309,60 @@ export class LeadsService {
     return lead;
   }
 
+  async listInteractions(user: AuthenticatedUser, id: string) {
+    const lead = await this.requireLeadAccess(user, id);
+    return this.prisma.leadInteraction.findMany({
+      where: { leadId: lead.id },
+      orderBy: { createdAt: 'desc' },
+      include: LEAD_INTERACTION_INCLUDE,
+    });
+  }
+
+  async createInteraction(
+    user: AuthenticatedUser,
+    leadId: string,
+    dto: CreateLeadInteractionDto,
+  ) {
+    const lead = await this.requireLeadAccess(user, leadId);
+    const createdAt = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const interaction = await tx.leadInteraction.create({
+        data: {
+          leadId: lead.id,
+          type: dto.type,
+          note: dto.note.trim(),
+          outcome: dto.outcome?.trim() || null,
+          nextActionAt: dto.nextActionAt ?? null,
+          createdByUserId: user.id,
+          createdAt,
+        },
+        include: LEAD_INTERACTION_INCLUDE,
+      });
+
+      await tx.lead.update({
+        where: { id: lead.id },
+        data: { lastContactedAt: createdAt },
+      });
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: lead.branchId,
+        entityType: 'LeadInteraction',
+        entityId: interaction.id,
+        action: AuditAction.CREATE,
+        payload: {
+          leadId: lead.id,
+          type: interaction.type,
+          outcome: interaction.outcome,
+          nextActionAt: interaction.nextActionAt?.toISOString() ?? null,
+        },
+      });
+
+      return interaction;
+    });
+  }
+
   // ───────────────────────── assign ─────────────────────────
   async assign(user: AuthenticatedUser, id: string, dto: AssignLeadDto) {
     const lead = await this.loadEditable(user, id);
@@ -318,12 +386,6 @@ export class LeadsService {
         data: { endedAt: new Date() },
       });
 
-      const updated = await tx.lead.update({
-        where: { id },
-        data: { currentOwnerUserId: dto.assignedToUserId },
-        include: LEAD_DETAIL_INCLUDE,
-      });
-
       await tx.leadOwnerLog.create({
         data: {
           leadId: id,
@@ -331,6 +393,12 @@ export class LeadsService {
           assignedByUserId: user.id,
           reason: dto.reason,
         },
+      });
+
+      const updated = await tx.lead.update({
+        where: { id },
+        data: { currentOwnerUserId: dto.assignedToUserId },
+        include: LEAD_DETAIL_INCLUDE,
       });
 
       await this.audit.recordWith(tx, {
@@ -375,7 +443,10 @@ export class LeadsService {
       // intentionally don't reset it on later transitions — it's meant
       // to record the most recent CS touch, not the current state.
       const data: Prisma.LeadUpdateInput = { status: dto.status };
-      if (dto.status === LeadStatus.CONTACTED) {
+      if (
+        dto.status === LeadStatus.CONTACTED ||
+        dto.status === LeadStatus.FOLLOW_UP
+      ) {
         data.lastContactedAt = new Date();
       }
 
@@ -405,41 +476,93 @@ export class LeadsService {
 
   // ───────────────────────── convert ─────────────────────────
   async convert(user: AuthenticatedUser, id: string, dto: ConvertLeadDto) {
-    const lead = await this.loadEditable(user, id);
-    if (lead.status === LeadStatus.WON || lead.status === LeadStatus.ARCHIVED) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        branchId: true,
+        customerId: true,
+        status: true,
+        title: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        phone: true,
+        email: true,
+        lineId: true,
+        notes: true,
+      },
+    });
+    if (!lead) throw new NotFoundException('Lead not found');
+    assertBranchAccess(user, lead.branchId);
+    if (lead.status !== LeadStatus.QUALIFIED) {
       throw new BadRequestException(
-        `Cannot convert a lead in ${lead.status} state`,
+        `Only QUALIFIED leads can be converted (current: ${lead.status})`,
       );
     }
 
+    const firstName = dto.firstName ?? lead.firstName;
+    const lastName = dto.lastName ?? lead.lastName;
+    if (!firstName || !lastName) {
+      throw new BadRequestException(
+        'Lead conversion requires firstName and lastName on the lead or payload',
+      );
+    }
+
+    const customerDraft = {
+      title: dto.title ?? lead.title ?? undefined,
+      firstName,
+      middleName: dto.middleName ?? lead.middleName ?? undefined,
+      lastName,
+      nickname: dto.nickname,
+      phone: dto.phone ?? lead.phone ?? undefined,
+      email: dto.email ?? lead.email ?? undefined,
+      lineId: dto.lineId ?? lead.lineId ?? undefined,
+      gender: dto.gender,
+      birthdate: dto.birthdate ?? null,
+      notes: dto.notes ?? lead.notes ?? undefined,
+    };
+
     return this.prisma.$transaction(async (tx) => {
-      const linked = await tx.customer.findFirst({
-        where: {
-          deletedAt: null,
-          OR: [
-            ...(dto.phone ? [{ phone: dto.phone }] : []),
-            ...(dto.email ? [{ email: dto.email }] : []),
-          ],
-        },
-      });
+      const linked =
+        (lead.customerId
+          ? await tx.customer.findUnique({
+              where: { id: lead.customerId },
+            })
+          : null) ??
+        (customerDraft.phone || customerDraft.email
+          ? await tx.customer.findFirst({
+              where: {
+                deletedAt: null,
+                OR: [
+                  ...(customerDraft.phone
+                    ? [{ phone: customerDraft.phone }]
+                    : []),
+                  ...(customerDraft.email
+                    ? [{ email: customerDraft.email }]
+                    : []),
+                ],
+              },
+            })
+          : null);
 
       const customer = linked
         ? linked
         : await tx.customer.create({
             data: {
               code: await generateMonthlyCode(tx, 'CUST', 'customer-code'),
-              fullName: composeFullName(dto),
-              title: dto.title,
-              firstName: dto.firstName,
-              middleName: dto.middleName,
-              lastName: dto.lastName,
-              nickname: dto.nickname,
-              phone: dto.phone,
-              email: dto.email,
-              lineId: dto.lineId,
-              gender: dto.gender,
-              birthdate: dto.birthdate ?? null,
-              notes: dto.notes,
+              fullName: composeFullName(customerDraft),
+              title: customerDraft.title,
+              firstName: customerDraft.firstName,
+              middleName: customerDraft.middleName,
+              lastName: customerDraft.lastName,
+              nickname: customerDraft.nickname,
+              phone: customerDraft.phone,
+              email: customerDraft.email,
+              lineId: customerDraft.lineId,
+              gender: customerDraft.gender,
+              birthdate: customerDraft.birthdate,
+              notes: customerDraft.notes,
               currentBranchId: lead.branchId,
             },
           });
@@ -477,6 +600,98 @@ export class LeadsService {
     });
   }
 
+  async updateInteraction(
+    user: AuthenticatedUser,
+    id: string,
+    dto: UpdateLeadInteractionDto,
+  ) {
+    const existing = await this.loadInteraction(user, id);
+    const data: Prisma.LeadInteractionUpdateInput = {};
+
+    if (dto.type !== undefined) data.type = dto.type;
+    if (dto.note !== undefined) data.note = dto.note.trim();
+    if (dto.outcome !== undefined) data.outcome = dto.outcome?.trim() || null;
+    if (dto.nextActionAt !== undefined) data.nextActionAt = dto.nextActionAt;
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException(
+        'At least one interaction field is required',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.leadInteraction.update({
+        where: { id },
+        data,
+        include: LEAD_INTERACTION_INCLUDE,
+      });
+
+      await tx.lead.update({
+        where: { id: existing.lead.id },
+        data: { lastContactedAt: new Date() },
+      });
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: existing.lead.branchId,
+        entityType: 'LeadInteraction',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          leadId: existing.lead.id,
+          changes: {
+            ...(dto.type !== undefined
+              ? { type: { from: existing.type, to: dto.type } }
+              : {}),
+            ...(dto.note !== undefined
+              ? { note: { from: existing.note, to: dto.note.trim() } }
+              : {}),
+            ...(dto.outcome !== undefined
+              ? {
+                  outcome: {
+                    from: existing.outcome,
+                    to: dto.outcome?.trim() || null,
+                  },
+                }
+              : {}),
+            ...(dto.nextActionAt !== undefined
+              ? {
+                  nextActionAt: {
+                    from: existing.nextActionAt?.toISOString() ?? null,
+                    to: dto.nextActionAt?.toISOString() ?? null,
+                  },
+                }
+              : {}),
+          },
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  async deleteInteraction(user: AuthenticatedUser, id: string) {
+    const existing = await this.loadInteraction(user, id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.leadInteraction.delete({ where: { id } });
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: existing.lead.branchId,
+        entityType: 'LeadInteraction',
+        entityId: existing.id,
+        action: AuditAction.DELETE,
+        payload: {
+          leadId: existing.lead.id,
+          type: existing.type,
+          createdByUserId: existing.createdByUserId,
+        },
+      });
+    });
+
+    return { id, deleted: true };
+  }
+
   // ───────────────────────── helpers ─────────────────────────
   private assertTransitionAllowed(from: LeadStatus, to: LeadStatus): void {
     if (from === to) return;
@@ -508,6 +723,39 @@ export class LeadsService {
       },
     });
     if (!lead) throw new NotFoundException('Lead not found');
+    assertBranchAccess(user, lead.branchId);
+    return lead;
+  }
+
+  private async loadInteraction(user: AuthenticatedUser, id: string) {
+    const interaction = await this.prisma.leadInteraction.findUnique({
+      where: { id },
+      include: {
+        lead: {
+          select: {
+            id: true,
+            branchId: true,
+          },
+        },
+      },
+    });
+    if (!interaction) {
+      throw new NotFoundException('Lead interaction not found');
+    }
+    assertBranchAccess(user, interaction.lead.branchId);
+    return interaction;
+  }
+
+  private async requireLeadAccess(user: AuthenticatedUser, id: string) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        branchId: true,
+        deletedAt: true,
+      },
+    });
+    if (!lead || lead.deletedAt) throw new NotFoundException('Lead not found');
     assertBranchAccess(user, lead.branchId);
     return lead;
   }

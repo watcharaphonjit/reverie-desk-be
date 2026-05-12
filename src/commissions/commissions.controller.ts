@@ -16,6 +16,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CommissionsService } from './commissions.service';
+import { CommissionBatchActionDto } from './dto/commission-batch-action.dto';
 import { CommissionQueryDto } from './dto/commission-query.dto';
 
 const READ_ROLES = [
@@ -50,13 +51,36 @@ export class CommissionsController {
   }
 
   @Get()
-  list(@Query() query: CommissionQueryDto) {
-    return this.commissions.findAll(query);
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CommissionQueryDto,
+  ) {
+    return this.commissions.findAll(user, query);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.commissions.findOne(id);
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.commissions.findOne(user, id);
+  }
+
+  @Post('lock-batch')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...WRITE_ROLES)
+  lockBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CommissionBatchActionDto,
+  ) {
+    return this.commissions.lockBatch(user, dto.ids, dto.note ?? null);
+  }
+
+  @Post('pay-batch')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...WRITE_ROLES)
+  payBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CommissionBatchActionDto,
+  ) {
+    return this.commissions.payBatch(user, dto.ids, dto.note ?? null);
   }
 
   @Post(':id/lock')
