@@ -50,6 +50,14 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@placeholder/placeholder' }}
+            JWT_SECRET=${{ secrets.JWT_SECRET || 'change-me-change-me-change-me' }}
+            JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '12h' }}
+            REDIS_HOST=${{ secrets.REDIS_HOST || 'reverie-desk-be.railway.internal' }}
+            REDIS_PORT=${{ secrets.REDIS_PORT || '6379' }}
+            LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+            ENABLE_QUEUES=${{ secrets.ENABLE_QUEUES || 'true' }}
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.value }}

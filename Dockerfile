@@ -27,6 +27,8 @@ RUN apk add --no-cache libc6-compat openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Prisma client must be generated against the schema we ship.
+ARG DATABASE_URL=postgresql://placeholder:placeholder@placeholder/placeholder
+ENV DATABASE_URL=$DATABASE_URL
 RUN npx prisma generate \
  && npm run build \
  && npm prune --omit=dev
