@@ -143,6 +143,7 @@ export class PaymentsService {
           paidAt: now,
           createdByUserId: user.id,
           note: dto.note,
+          receivingAccount: dto.receivingAccount,
         },
         include: PAYMENT_INCLUDE,
       });

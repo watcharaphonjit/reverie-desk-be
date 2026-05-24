@@ -56,7 +56,9 @@ export class BranchesService {
         data: {
           code: dto.code,
           name: dto.name,
-          status: BranchStatus.ACTIVE,
+          phone: dto.phone,
+          address: dto.address,
+          status: dto.status ?? BranchStatus.ACTIVE,
         },
       });
 
@@ -289,6 +291,12 @@ export class BranchesService {
     const diff: Record<string, Prisma.InputJsonValue> = {};
     if (before.name !== after.name) {
       diff.name = { from: before.name, to: after.name };
+    }
+    if (before.phone !== after.phone) {
+      diff.phone = { from: before.phone, to: after.phone };
+    }
+    if (before.address !== after.address) {
+      diff.address = { from: before.address, to: after.address };
     }
     if (before.status !== after.status) {
       diff.status = { from: before.status, to: after.status };

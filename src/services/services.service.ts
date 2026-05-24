@@ -67,4 +67,23 @@ export class ServicesService {
     if (!service) throw new NotFoundException('Service not found');
     return service;
   }
+
+  async findDefaultStock(serviceId: string) {
+    await this.findOne(serviceId);
+    return this.prisma.serviceDefaultStock.findMany({
+      where: { serviceId },
+      include: {
+        stockItem: {
+          select: {
+            id: true,
+            sku: true,
+            name: true,
+            type: true,
+            primaryUnitId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 }

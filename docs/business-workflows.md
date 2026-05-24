@@ -32,6 +32,8 @@ stateDiagram-v2
 - `DELETE /leads/interactions/:id` removes the row and writes an audit entry.
 - Creating or updating an interaction refreshes `lead.lastContactedAt`, so the CRM list can sort / display recency without inferring it on the client.
 
+**Expired soft-lock**: when `expiresAt < now`, mutations are blocked with `400 Lead has expired and is locked for editing`. **Exception**: `ADMIN`, `BRANCH_MANAGER`, or `SUPER_BRANCH_MANAGER` may set `status = ARCHIVED` on an expired lead from **any** current status (transition map bypass); all other status changes still require a valid transition.
+
 ### Lead Conversion
 
 **Trigger**: `POST /leads/:id/convert` (`LeadsService.convert`).

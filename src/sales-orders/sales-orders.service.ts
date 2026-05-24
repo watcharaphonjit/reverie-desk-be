@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -49,6 +50,7 @@ const ORDER_INCLUDE = {
       createdAt: true,
       updatedAt: true,
       note: true,
+      receivingAccount: true,
       createdByUserId: true,
     },
   },
@@ -95,6 +97,7 @@ export class SalesOrdersService {
     await this.assertCustomerExists(dto.customerId);
     if (dto.leadId) {
       await this.assertLeadConsistent(dto.leadId, dto.customerId, dto.branchId);
+      await this.assertLeadNotAlreadyUsed(dto.leadId);
     }
 
     const totals = await this.buildTotals(dto.items, dto.taxAmount);
@@ -347,6 +350,21 @@ export class SalesOrdersService {
     });
     if (!customer || customer.deletedAt) {
       throw new NotFoundException('Customer not found');
+    }
+  }
+
+  private async assertLeadNotAlreadyUsed(leadId: string): Promise<void> {
+    const existing = await this.prisma.salesOrder.findFirst({
+      where: {
+        leadId,
+        status: { notIn: [SalesOrderStatus.CANCELLED] },
+      },
+      select: { id: true, orderNo: true, status: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `Lead is already linked to sales order ${existing.orderNo}`,
+      );
     }
   }
 

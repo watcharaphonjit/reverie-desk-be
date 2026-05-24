@@ -32,4 +32,9 @@ export class CreatePaymentDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  receivingAccount?: string;
 }

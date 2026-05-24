@@ -16,6 +16,11 @@ export class ServicesController {
     return this.services.findAll(query);
   }
 
+  @Get(':id/default-stock')
+  findDefaultStock(@Param('id') id: string) {
+    return this.services.findDefaultStock(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.services.findOne(id);

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -51,6 +52,11 @@ export class FinanceSettingsDto {
   @Min(0)
   @Max(1_000_000)
   outstandingWarningThreshold?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  receivingAccounts?: string[];
 }
 
 export class InventorySettingsDto {
@@ -110,6 +116,18 @@ export class AutomationSettingsDto {
   enableDailyDigest?: boolean;
 }
 
+export class LeadsSettingsDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  socialPages?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  procedureTypes?: string[];
+}
+
 export class UpdateSettingsDto {
   @IsOptional()
   @ValidateNested()
@@ -135,4 +153,9 @@ export class UpdateSettingsDto {
   @ValidateNested()
   @Type(() => AutomationSettingsDto)
   automation?: AutomationSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LeadsSettingsDto)
+  leads?: LeadsSettingsDto;
 }

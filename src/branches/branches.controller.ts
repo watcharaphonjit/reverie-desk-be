@@ -27,7 +27,7 @@ export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPER_BRANCH_MANAGER')
+  @Roles('ADMIN')
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBranchDto) {
     return this.branchesService.create(user, dto);
   }

@@ -22,6 +22,7 @@ import {
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { AuditService } from '../common/services/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TreatmentEntitlementsService } from '../treatment-entitlements/treatment-entitlements.service';
 import { CompleteServiceEventDto } from './dto/complete-service-event.dto';
 import { ConsumeStockDto } from './dto/consume-stock.dto';
 import { CreateServiceEventDto } from './dto/create-service-event.dto';
@@ -62,6 +63,7 @@ export class ServiceEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly entitlements: TreatmentEntitlementsService,
   ) {}
 
   // ───────────────────────── create ─────────────────────────
@@ -465,7 +467,13 @@ export class ServiceEventsService {
   ): Promise<void> {
     const appointment = await tx.appointment.findUnique({
       where: { id: appointmentId },
-      select: { id: true, status: true, branchId: true },
+      select: {
+        id: true,
+        status: true,
+        branchId: true,
+        entitlementId: true,
+        entitlementConsumedAt: true,
+      },
     });
     if (!appointment || appointment.status !== AppointmentStatus.CHECKED_IN) {
       return;
@@ -496,6 +504,29 @@ export class ServiceEventsService {
         autoCompletedBy: 'service-events',
       },
     });
+
+    if (appointment.entitlementId && !appointment.entitlementConsumedAt) {
+      const ent = await this.entitlements.tryConsumeAppointmentWith(
+        tx,
+        appointment.entitlementId,
+        appointmentId,
+      );
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: appointment.branchId,
+        entityType: 'TreatmentEntitlement',
+        entityId: ent.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          field: 'consumedSessions',
+          appointmentId,
+          from: ent.consumedSessions - 1,
+          to: ent.consumedSessions,
+          totalSessions: ent.totalSessions,
+          trigger: 'service-events.auto-complete',
+        },
+      });
+    }
   }
 
   private async assertUserActive(userId: string, label: string): Promise<void> {

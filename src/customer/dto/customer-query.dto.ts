@@ -10,6 +10,14 @@ export class CustomerQueryDto {
   @IsString()
   branchId?: string;
 
+  /** Filter customers whose birthdate falls in this calendar month (1–12). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  birthMonth?: number;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

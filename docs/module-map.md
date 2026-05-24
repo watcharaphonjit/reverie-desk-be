@@ -136,7 +136,7 @@ For each module: **Path**, **Purpose**, **Main entities**, **Exposed APIs**, **D
 - **Purpose**: Lead pipeline; owner reassignment + ownership log; interaction history; convert qualified leads to customers.
 - **Main entities**: `Lead`, `LeadOwnerLog`, `LeadInteraction`.
 - **APIs**: `POST /leads`, `GET /leads`, `GET /leads/:id`, `GET /leads/:id/interactions`, `POST /leads/:id/interactions`, `POST /leads/:id/assign`, `PATCH /leads/:id/status`, `PATCH /leads/interactions/:id`, `DELETE /leads/interactions/:id`, `POST /leads/:id/convert`.
-- **State**: `LeadStatus = NEW → CONTACTED → FOLLOW_UP → QUALIFIED`; `QUALIFIED → LOST`; `QUALIFIED → WON` only via `convert()`; `WON/LOST → ARCHIVED`.
+- **State**: `LeadStatus = NEW → CONTACTED → FOLLOW_UP → QUALIFIED`; `QUALIFIED → LOST`; `QUALIFIED → WON` only via `convert()`; `WON/LOST → ARCHIVED`. Admins may archive **expired** leads from any status via `PATCH /leads/:id/status`.
 - **Depends on**: `prisma`, `common/audit`, `customer` (`generateMonthlyCode`), `branches`.
 - **Used by**: `sales-orders` (optional `leadId`), `commissions` (`LEAD_REWARD` recipient).
 

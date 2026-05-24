@@ -1,9 +1,13 @@
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsEmail,
+  IsNumber,
   IsOptional,
   IsPhoneNumber,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -28,10 +32,10 @@ export class CreateLeadDto {
   @MaxLength(80)
   lastName!: string;
 
-  @IsOptional()
+  @IsString()
   @IsPhoneNumber('TH')
   @MaxLength(30)
-  phone?: string;
+  phone!: string;
 
   @IsOptional()
   @IsEmail()
@@ -72,4 +76,45 @@ export class CreateLeadDto {
   @IsOptional()
   @IsString()
   customerId?: string;
+
+  /** Initial owner — defaults to creator when omitted. */
+  @IsOptional()
+  @IsString()
+  ownerUserId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  orgSalesAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  adsSalesAmount?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  procedureTypes?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  depositStatus?: string;
+
+  @IsOptional()
+  @Type(() => Date)
+  appointmentDate?: Date;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  page?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  adsLink?: string;
 }

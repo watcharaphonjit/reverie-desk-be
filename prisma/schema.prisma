@@ -295,6 +295,8 @@ model Branch {
   id        String       @id @default(cuid())
   code      String       @unique
   name      String
+  phone     String?
+  address   String?
   status    BranchStatus @default(ACTIVE)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -517,6 +519,14 @@ model Lead {
   /// a schema migration.
   channel             String?
   notes               String?
+  /// Marketing / ads attribution fields (populated for select channels).
+  orgSalesAmount      Decimal?   @db.Decimal(18, 2)
+  adsSalesAmount      Decimal?   @db.Decimal(18, 2)
+  procedureTypes      String[]   @default([])
+  depositStatus       String?
+  appointmentDate     DateTime?
+  page                String?
+  adsLink             String?
   /// Auto-set by `LeadsService.create` to `createdAt + 60 days`.
   /// Pure derivable column — no cron flips status; downstream
   /// queries/UI gate on `expiresAt < now()`.
@@ -620,11 +630,28 @@ model Service {
   appointments    Appointment[]          @relation("AppointmentService")
   serviceEvents   CustomerServiceEvent[] @relation("ServiceEventService")
   stockUsages     ServiceStockUsage[]    @relation("ServiceStockUsageService")
+  defaultStock    ServiceDefaultStock[]  @relation("ServiceDefaultStockService")
   entitlements    TreatmentEntitlement[] @relation("TreatmentEntitlementService")
 
   @@index([name])
   @@index([commissionGroupCode])
   @@map("services")
+}
+
+model ServiceDefaultStock {
+  id          String   @id @default(cuid())
+  serviceId   String
+  stockItemId String
+  defaultQty  Decimal  @db.Decimal(18, 4)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  service   Service   @relation("ServiceDefaultStockService", fields: [serviceId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation("ServiceDefaultStockItem", fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@unique([serviceId, stockItemId])
+  @@index([serviceId])
+  @@map("service_default_stock")
 }
 
 model SalesOrder {
@@ -701,6 +728,8 @@ model Payment {
   paidAt          DateTime?
   createdByUserId String
   note            String?
+  /// Clinic bank / QR account that received this payment.
+  receivingAccount String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -1052,6 +1081,7 @@ model StockItem {
   transferItems        StockTransferItem[]   @relation("StockTransferItemItem")
   openedContainers     OpenedContainer[]     @relation("OpenedContainerItem")
   stockUsages          ServiceStockUsage[]   @relation("ServiceStockUsageItem")
+  defaultStockTemplates ServiceDefaultStock[] @relation("ServiceDefaultStockItem")
   branchStockSaleItems BranchStockSaleItem[] @relation("BranchStockSaleItemItem")
 
   @@index([type, isActive])

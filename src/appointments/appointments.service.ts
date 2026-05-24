@@ -262,6 +262,14 @@ export class AppointmentsService {
     id: string,
     note?: string,
   ): Promise<AppointmentWithRelations> {
+    const existing = await this.findOne(user, id);
+    if (existing.status === AppointmentStatus.COMPLETED) {
+      if (existing.entitlementId && !existing.entitlementConsumedAt) {
+        return this.retryEntitlementConsume(user, id);
+      }
+      return existing;
+    }
+
     // Spec §"Complete Appointment": "service event must exist". The visit is
     // not legitimately completable until at least one service event has been
     // recorded — otherwise we'd lose the clinical-execution audit trail.
@@ -355,6 +363,45 @@ export class AppointmentsService {
   }
 
   // ───────────────────────── helpers ─────────────────────────
+  private async retryEntitlementConsume(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<AppointmentWithRelations> {
+    return this.prisma.$transaction(async (tx) => {
+      const appt = await tx.appointment.findUnique({
+        where: { id },
+        include: APPOINTMENT_INCLUDE,
+      });
+      if (!appt?.entitlementId || appt.entitlementConsumedAt) {
+        return appt!;
+      }
+      const ent = await this.entitlements.tryConsumeAppointmentWith(
+        tx,
+        appt.entitlementId,
+        appt.id,
+      );
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: appt.branchId,
+        entityType: 'TreatmentEntitlement',
+        entityId: ent.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          field: 'consumedSessions',
+          appointmentId: appt.id,
+          from: ent.consumedSessions - 1,
+          to: ent.consumedSessions,
+          totalSessions: ent.totalSessions,
+          trigger: 'appointment.complete.retry',
+        },
+      });
+      return tx.appointment.findUniqueOrThrow({
+        where: { id },
+        include: APPOINTMENT_INCLUDE,
+      });
+    });
+  }
+
   private async transition(
     user: AuthenticatedUser,
     id: string,
@@ -438,7 +485,10 @@ export class AppointmentsService {
         });
       }
 
-      return updated;
+      return tx.appointment.findUniqueOrThrow({
+        where: { id },
+        include: APPOINTMENT_INCLUDE,
+      });
     });
   }
 

@@ -23,6 +23,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { CreateLeadInteractionDto } from './dto/create-lead-interaction.dto';
 import { ListLeadsQuery } from './dto/list-leads.query';
 import { UpdateLeadInteractionDto } from './dto/update-lead-interaction.dto';
+import { LinkLeadCustomerDto } from './dto/link-lead-customer.dto';
 import { UpdateLeadStatusDto } from './dto/update-status.dto';
 import { LeadsService } from './leads.service';
 
@@ -101,6 +102,16 @@ export class LeadsController {
     @Body() dto: ConvertLeadDto,
   ) {
     return this.leadsService.convert(user, id, dto);
+  }
+
+  @Patch(':id/link-customer')
+  @Roles('ADMIN', 'CS', 'TELESALES', 'BRANCH_MANAGER', 'SUPER_BRANCH_MANAGER')
+  linkCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: LinkLeadCustomerDto,
+  ) {
+    return this.leadsService.linkCustomer(user, id, dto);
   }
 
   @Patch('interactions/:id')

@@ -30,6 +30,7 @@ import { ConvertLeadDto } from './dto/convert-lead.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { CreateLeadInteractionDto } from './dto/create-lead-interaction.dto';
 import { ListLeadsQuery } from './dto/list-leads.query';
+import { LinkLeadCustomerDto } from './dto/link-lead-customer.dto';
 import { UpdateLeadInteractionDto } from './dto/update-lead-interaction.dto';
 import { UpdateLeadStatusDto } from './dto/update-status.dto';
 
@@ -156,10 +157,12 @@ export class LeadsService {
     assertBranchAccess(user, dto.branchId);
     await this.branches.validateBranchActive(dto.branchId);
 
+    const phone = this.validatePhoneRequired(dto.phone);
+
     let customerId = dto.customerId ?? null;
-    if (!customerId && dto.phone) {
+    if (!customerId && phone) {
       const linked = await this.customers.findByPhoneOrEmail(
-        dto.phone,
+        phone,
         dto.email ?? null,
       );
       customerId = linked?.id ?? null;
@@ -172,6 +175,21 @@ export class LeadsService {
         select: { id: true },
       });
       if (!exists) throw new BadRequestException('customerId does not exist');
+    }
+
+    const ownerUserId = dto.ownerUserId ?? user.id;
+    if (ownerUserId !== user.id) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: ownerUserId },
+        select: { id: true, branchId: true, status: true },
+      });
+      if (!owner) throw new BadRequestException('ownerUserId does not exist');
+      if (owner.status !== 'ACTIVE') {
+        throw new BadRequestException('Owner user is not active');
+      }
+      if (!isUnrestricted(user) && owner.branchId !== dto.branchId) {
+        throw new ForbiddenException('Owner must belong to the lead branch');
+      }
     }
 
     const now = new Date();
@@ -190,18 +208,35 @@ export class LeadsService {
           firstName: dto.firstName,
           middleName: dto.middleName,
           lastName: dto.lastName,
-          phone: dto.phone,
+          phone,
           email: dto.email,
           lineId: dto.lineId,
           facebookName: dto.facebookName,
           source: dto.source,
           channel: dto.channel,
           notes: dto.notes,
+          orgSalesAmount: dto.orgSalesAmount,
+          adsSalesAmount: dto.adsSalesAmount,
+          procedureTypes: dto.procedureTypes ?? [],
+          depositStatus: dto.depositStatus,
+          appointmentDate: dto.appointmentDate,
+          page: dto.page,
+          adsLink: dto.adsLink,
           expiresAt,
           status: LeadStatus.NEW,
+          currentOwnerUserId: ownerUserId,
           createdByUserId: user.id,
         },
         include: LEAD_DETAIL_INCLUDE,
+      });
+
+      await tx.leadOwnerLog.create({
+        data: {
+          leadId: created.id,
+          assignedToUserId: ownerUserId,
+          assignedByUserId: user.id,
+          reason: 'Initial owner on create',
+        },
       });
 
       await this.audit.recordWith(tx, {
@@ -217,6 +252,7 @@ export class LeadsService {
           source: created.source,
           channel: created.channel,
           expiresAt: created.expiresAt?.toISOString() ?? null,
+          ownerUserId,
         },
       });
 
@@ -236,11 +272,14 @@ export class LeadsService {
 
     if (query.branchId) assertBranchAccess(user, query.branchId);
 
+    const ownerId =
+      query.ownerId ?? (this.isTelesalesOnly(user) ? user.id : undefined);
+
     const where: Prisma.LeadWhereInput = {
       deletedAt: null,
       branchId: this.resolveBranchFilter(user, query.branchId),
       status: query.status,
-      currentOwnerUserId: query.ownerId,
+      currentOwnerUserId: ownerId,
       channel: query.channel,
       ...(query.search
         ? {
@@ -306,6 +345,7 @@ export class LeadsService {
     });
     if (!lead || lead.deletedAt) throw new NotFoundException('Lead not found');
     assertBranchAccess(user, lead.branchId);
+    this.assertLeadOwnership(user, lead);
     return lead;
   }
 
@@ -424,7 +464,9 @@ export class LeadsService {
     id: string,
     dto: UpdateLeadStatusDto,
   ) {
-    const lead = await this.loadEditable(user, id);
+    const lead = await this.loadEditable(user, id, {
+      allowArchiveWhenExpired: dto.status === LeadStatus.ARCHIVED,
+    });
 
     if (dto.status === LeadStatus.WON) {
       throw new BadRequestException(
@@ -436,7 +478,13 @@ export class LeadsService {
         'Only ADMIN, BRANCH_MANAGER, or SUPER_BRANCH_MANAGER can archive leads',
       );
     }
-    this.assertTransitionAllowed(lead.status, dto.status);
+    const skipTransitionCheck =
+      dto.status === LeadStatus.ARCHIVED &&
+      this.canArchive(user) &&
+      this.isExpired(lead);
+    if (!skipTransitionCheck) {
+      this.assertTransitionAllowed(lead.status, dto.status);
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Stamp `lastContactedAt` when the lead enters CONTACTED. We
@@ -483,6 +531,7 @@ export class LeadsService {
         branchId: true,
         customerId: true,
         status: true,
+        expiresAt: true,
         title: true,
         firstName: true,
         middleName: true,
@@ -491,10 +540,13 @@ export class LeadsService {
         email: true,
         lineId: true,
         notes: true,
+        currentOwnerUserId: true,
       },
     });
     if (!lead) throw new NotFoundException('Lead not found');
     assertBranchAccess(user, lead.branchId);
+    this.assertLeadOwnership(user, lead);
+    this.assertNotExpired(lead);
     if (lead.status !== LeadStatus.QUALIFIED) {
       throw new BadRequestException(
         `Only QUALIFIED leads can be converted (current: ${lead.status})`,
@@ -523,8 +575,37 @@ export class LeadsService {
       notes: dto.notes ?? lead.notes ?? undefined,
     };
 
+    const existingCustomer =
+      (lead.customerId
+        ? await this.prisma.customer.findUnique({
+            where: { id: lead.customerId },
+          })
+        : null) ??
+      (customerDraft.phone || customerDraft.email
+        ? await this.prisma.customer.findFirst({
+            where: {
+              deletedAt: null,
+              OR: [
+                ...(customerDraft.phone
+                  ? [{ phone: customerDraft.phone }]
+                  : []),
+                ...(customerDraft.email
+                  ? [{ email: customerDraft.email }]
+                  : []),
+              ],
+            },
+          })
+        : null);
+
+    if (!existingCustomer && !dto.birthdate) {
+      throw new BadRequestException(
+        'birthdate is required when creating a new customer',
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const linked =
+        existingCustomer ??
         (lead.customerId
           ? await tx.customer.findUnique({
               where: { id: lead.customerId },
@@ -596,7 +677,56 @@ export class LeadsService {
         },
       });
 
-      return { lead: updated, customer };
+      return { lead: updated, customer, linkedExisting: !!linked };
+    });
+  }
+
+  async linkCustomer(
+    user: AuthenticatedUser,
+    id: string,
+    dto: LinkLeadCustomerDto,
+  ) {
+    const lead = await this.loadEditable(user, id);
+    if (lead.status === LeadStatus.WON || lead.status === LeadStatus.ARCHIVED) {
+      throw new BadRequestException('Cannot link customer to a closed lead');
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: dto.customerId },
+      select: { id: true, deletedAt: true, currentBranchId: true },
+    });
+    if (!customer || customer.deletedAt) {
+      throw new NotFoundException('Customer not found');
+    }
+    if (
+      customer.currentBranchId &&
+      customer.currentBranchId !== lead.branchId
+    ) {
+      throw new BadRequestException(
+        'Customer branch does not match lead branch',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.lead.update({
+        where: { id },
+        data: { customerId: dto.customerId },
+        include: LEAD_DETAIL_INCLUDE,
+      });
+
+      await this.audit.recordWith(tx, {
+        actorUserId: user.id,
+        branchId: updated.branchId,
+        entityType: 'Lead',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        payload: {
+          field: 'customerId',
+          customerId: dto.customerId,
+        },
+      });
+
+      return updated;
     });
   }
 
@@ -712,7 +842,11 @@ export class LeadsService {
     return user.roles.some((r) => allowed.includes(r));
   }
 
-  private async loadEditable(user: AuthenticatedUser, id: string) {
+  private async loadEditable(
+    user: AuthenticatedUser,
+    id: string,
+    opts?: { allowArchiveWhenExpired?: boolean },
+  ) {
     const lead = await this.prisma.lead.findUnique({
       where: { id },
       select: {
@@ -720,11 +854,81 @@ export class LeadsService {
         branchId: true,
         status: true,
         currentOwnerUserId: true,
+        expiresAt: true,
       },
     });
     if (!lead) throw new NotFoundException('Lead not found');
     assertBranchAccess(user, lead.branchId);
+    this.assertLeadOwnership(user, lead);
+    this.assertNotExpired(lead, opts?.allowArchiveWhenExpired ?? false);
     return lead;
+  }
+
+  private async requireLeadAccess(user: AuthenticatedUser, id: string) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        branchId: true,
+        deletedAt: true,
+        currentOwnerUserId: true,
+        expiresAt: true,
+      },
+    });
+    if (!lead || lead.deletedAt) throw new NotFoundException('Lead not found');
+    assertBranchAccess(user, lead.branchId);
+    this.assertLeadOwnership(user, lead);
+    this.assertNotExpired(lead);
+    return lead;
+  }
+
+  private validatePhoneRequired(phone: string): string {
+    const trimmed = phone.trim();
+    if (!trimmed) throw new BadRequestException('Phone is required');
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 12) {
+      throw new BadRequestException('Phone must be 10–12 digits');
+    }
+    return trimmed;
+  }
+
+  private isExpired(lead: { expiresAt: Date | null }): boolean {
+    return lead.expiresAt != null && lead.expiresAt.getTime() < Date.now();
+  }
+
+  private isTelesalesOnly(user: AuthenticatedUser): boolean {
+    return (
+      user.roles.includes(RoleCode.TELESALES) &&
+      !user.roles.some((r) =>
+        (
+          [
+            RoleCode.ADMIN,
+            RoleCode.SUPER_BRANCH_MANAGER,
+            RoleCode.BRANCH_MANAGER,
+            RoleCode.CS,
+          ] as RoleCode[]
+        ).includes(r),
+      )
+    );
+  }
+
+  private assertNotExpired(
+    lead: { expiresAt: Date | null },
+    allowArchive = false,
+  ): void {
+    if (!this.isExpired(lead)) return;
+    if (allowArchive) return;
+    throw new BadRequestException('Lead has expired and is locked for editing');
+  }
+
+  private assertLeadOwnership(
+    user: AuthenticatedUser,
+    lead: { currentOwnerUserId: string | null },
+  ): void {
+    if (!this.isTelesalesOnly(user)) return;
+    if (lead.currentOwnerUserId !== user.id) {
+      throw new ForbiddenException('You do not own this lead');
+    }
   }
 
   private async loadInteraction(user: AuthenticatedUser, id: string) {
@@ -744,20 +948,6 @@ export class LeadsService {
     }
     assertBranchAccess(user, interaction.lead.branchId);
     return interaction;
-  }
-
-  private async requireLeadAccess(user: AuthenticatedUser, id: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        branchId: true,
-        deletedAt: true,
-      },
-    });
-    if (!lead || lead.deletedAt) throw new NotFoundException('Lead not found');
-    assertBranchAccess(user, lead.branchId);
-    return lead;
   }
 
   private resolveBranchFilter(

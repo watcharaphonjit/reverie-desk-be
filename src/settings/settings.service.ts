@@ -17,6 +17,7 @@ interface SettingsPayload {
     commissionLockDay: number;
     walletExpiryReminderDays: number;
     outstandingWarningThreshold: number;
+    receivingAccounts: string[];
   };
   inventory: {
     lowStockThreshold: number;
@@ -33,6 +34,10 @@ interface SettingsPayload {
     leadFollowUpDays: number;
     enableDailyDigest: boolean;
   };
+  leads: {
+    socialPages: string[];
+    procedureTypes: string[];
+  };
 }
 
 const DEFAULT_SYSTEM_SETTINGS: SettingsPayload = {
@@ -46,6 +51,7 @@ const DEFAULT_SYSTEM_SETTINGS: SettingsPayload = {
     commissionLockDay: 25,
     walletExpiryReminderDays: 14,
     outstandingWarningThreshold: 5000,
+    receivingAccounts: [],
   },
   inventory: {
     lowStockThreshold: 5,
@@ -61,6 +67,25 @@ const DEFAULT_SYSTEM_SETTINGS: SettingsPayload = {
     appointmentReminderHours: 24,
     leadFollowUpDays: 3,
     enableDailyDigest: false,
+  },
+  leads: {
+    socialPages: [
+      'Dr. PAUL ขอนแก่น',
+      'Dr. PAUL อุดร',
+      'Dr. PAUL โคราช',
+      'Dr. PAUL กทม',
+      'Dr. PAUL อุบล',
+      'Dr. PAUL หาดใหญ่',
+    ],
+    procedureTypes: [
+      'ปลูกผม FUE',
+      'ปลูกผม DHI',
+      'บำรุงผม',
+      'ศัลยกรรม',
+      'Skin',
+      'ยาทาน',
+      'อื่นๆ',
+    ],
   },
 };
 type SettingsSectionKey = keyof SettingsPayload;
@@ -85,6 +110,7 @@ export class SettingsService {
       inventory: this.mergeSection('inventory', byKey),
       notifications: this.mergeSection('notifications', byKey),
       automation: this.mergeSection('automation', byKey),
+      leads: this.mergeSection('leads', byKey),
     };
   }
 
@@ -125,6 +151,10 @@ export class SettingsService {
       automation: {
         ...current.automation,
         ...(dto.automation ?? {}),
+      },
+      leads: {
+        ...current.leads,
+        ...(dto.leads ?? {}),
       },
     } satisfies SettingsPayload;
 

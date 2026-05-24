@@ -15,6 +15,16 @@ export class UpdateBranchDto {
   name?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @IsOptional()
   @IsEnum(BranchStatus)
   status?: BranchStatus;
 }

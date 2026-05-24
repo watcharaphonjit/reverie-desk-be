@@ -120,6 +120,22 @@ export class CustomerService {
         : {}),
     };
 
+    if (query.birthMonth) {
+      const scopedBranch = query.branchId ?? scopedBranchFilter(user);
+      const birthMonthIds = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM customers
+        WHERE "deletedAt" IS NULL
+          AND "birthdate" IS NOT NULL
+          AND EXTRACT(MONTH FROM "birthdate") = ${query.birthMonth}
+          ${scopedBranch ? Prisma.sql`AND "currentBranchId" = ${scopedBranch}` : Prisma.empty}
+      `;
+      const ids = birthMonthIds.map((row) => row.id);
+      if (ids.length === 0) {
+        return { data: [], meta: { page, limit, total: 0 } };
+      }
+      where.id = { in: ids };
+    }
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
